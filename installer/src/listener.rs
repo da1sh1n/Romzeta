@@ -269,7 +269,7 @@ mod platform {
 
     use common::utf16::fromWide;
 
-    use crate::reg::{self, HKEY_CURRENT_USER as HKCU};
+    use common::reg::{self, HKEY_CURRENT_USER as HKCU};
 
     /// Per-user autostart. The listener is resident on Windows — it has to be
     /// running to hear `WM_DEVICECHANGE` — so something must start it at login.

@@ -117,7 +117,6 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_Diagnostics_ToolHelp",    # finding a running listener to replace
     "Win32_System_IO",                      # DeviceIoControl
     "Win32_System_Ioctl",                   # IOCTL_STORAGE_QUERY_PROPERTY: is this drive external?
-    "Win32_System_Registry",                # the HKCU Run entry
     "Win32_System_Threading",               # OpenProcess / process image paths
     "Win32_System_WindowsProgramming",      # DRIVE_* constants
 ] }

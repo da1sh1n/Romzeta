@@ -115,10 +115,11 @@ fn faceFile(face: &str) -> Option<PathBuf> {
     const FONTS: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts";
 
     for (root, dir) in [
-        (crate::reg::HKEY_LOCAL_MACHINE, machineFontDir()),
-        (crate::reg::HKEY_CURRENT_USER, userFontDir()),
+        (common::reg::HKEY_LOCAL_MACHINE, machineFontDir()),
+        (common::reg::HKEY_CURRENT_USER, userFontDir()),
     ] {
-        let (Some(key), Some(dir)) = (crate::reg::open(root, FONTS, crate::reg::READ), dir) else {
+        let (Some(key), Some(dir)) = (common::reg::open(root, FONTS, common::reg::READ), dir)
+        else {
             continue;
         };
         let Some(value) = fontValue(&key, face) else {
@@ -141,10 +142,10 @@ fn faceFile(face: &str) -> Option<PathBuf> {
 
 /// The value under the fonts key that holds `face`'s filename.
 #[cfg(windows)]
-fn fontValue(key: &crate::reg::Key, face: &str) -> Option<String> {
+fn fontValue(key: &common::reg::Key, face: &str) -> Option<String> {
     // One face, one file, named after itself. Every stock UI font is this.
     for suffix in [" (TrueType)", " (OpenType)"] {
-        if let Some(file) = crate::reg::querySz(key, Some(&format!("{face}{suffix}"))) {
+        if let Some(file) = common::reg::querySz(key, Some(&format!("{face}{suffix}"))) {
             return Some(file);
         }
     }
@@ -152,11 +153,11 @@ fn fontValue(key: &crate::reg::Key, face: &str) -> Option<String> {
     // A collection is named after everything inside it, so there is no name to
     // ask for: `"Yu Gothic UI Regular & Yu Gothic UI Semilight & … (TrueType)"`.
     // The `&`/`(` check is what keeps "Segoe UI" from matching "Segoe UI Emoji".
-    let name = crate::reg::enumValueNames(key).into_iter().find(|name| {
+    let name = common::reg::enumValueNames(key).into_iter().find(|name| {
         name.strip_prefix(face)
             .is_some_and(|rest| rest.starts_with(" (") || rest.starts_with(" &"))
     })?;
-    crate::reg::querySz(key, Some(&name))
+    common::reg::querySz(key, Some(&name))
 }
 
 #[cfg(windows)]

@@ -51,7 +51,7 @@ const NONE_SENTINEL: &str = "<none>";
 #[cfg(windows)]
 mod platform {
     use super::*;
-    use crate::reg::{self, HKEY_CURRENT_USER as HKCU};
+    use common::reg::{self, HKEY_CURRENT_USER as HKCU};
 
     /// The handler AutoPlay will run for an arriving drive, if any is chosen.
     pub fn currentChoice() -> Option<String> {

@@ -4,8 +4,8 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Wraps the registry calls this crate uses: open, create, read and write
-//! string values, enumerate names, delete.
+//! Wraps the registry calls this project uses: open, create, read and write
+//! string values, read numbers, enumerate names, delete.
 //!
 //! Two Win32 conventions: sizes are **bytes** while lengths are `u16` counts
 //! (`RegEnumValueW` is the exception), and a `None` name addresses a key's
@@ -17,13 +17,13 @@
 
 use std::ptr;
 
-use common::utf16::wide;
+use crate::utf16::wide;
 
 use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS};
 use windows_sys::Win32::System::Registry::{
-    HKEY, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
-    RegCreateKeyExW, RegDeleteKeyW, RegDeleteValueW, RegEnumValueW, RegOpenKeyExW,
-    RegQueryValueExW, RegSetValueExW,
+    HKEY, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
+    REG_VALUE_TYPE, RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteValueW, RegEnumValueW,
+    RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
 
 pub use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
@@ -136,13 +136,36 @@ pub fn querySz(key: &Key, name: Option<&str>) -> Option<String> {
     Some(String::from_utf16_lossy(&buffer[..end]))
 }
 
+/// Reads a `REG_DWORD`. `None` for a value that is absent or is some other
+/// type, which to the launcher's Steam checks means the same as zero.
+///
+/// The type is checked rather than trusted: `RegQueryValueExW` will happily
+/// fill four bytes from the front of a string.
+pub fn queryDword(key: &Key, name: Option<&str>) -> Option<u32> {
+    let name = name.map(wide);
+    let mut kind: REG_VALUE_TYPE = 0;
+    let mut value: u32 = 0;
+    let mut size = size_of::<u32>() as u32;
+    let ok = unsafe {
+        RegQueryValueExW(
+            key.0,
+            name.as_ref().map_or(ptr::null(), |n| n.as_ptr()),
+            ptr::null(),
+            &mut kind,
+            (&raw mut value) as *mut u8,
+            &mut size,
+        )
+    };
+    (ok == ERROR_SUCCESS && kind == REG_DWORD && size == size_of::<u32>() as u32).then_some(value)
+}
+
 /// Every value name under `key`, in the order the hive hands them over.
 ///
-/// Only `crate::font` needs this, because the font list names its values after
-/// the *faces* inside a file rather than after the file — a `.ttc` holding
-/// three is one value named after all three — so there is no name to ask for.
-/// A name too long for the buffer is skipped rather than truncated, since a
-/// truncated one would match the wrong font.
+/// Only the installer's font lookup needs this, because the font list names its
+/// values after the *faces* inside a file rather than after the file — a `.ttc`
+/// holding three is one value named after all three — so there is no name to
+/// ask for. A name too long for the buffer is skipped rather than truncated,
+/// since a truncated one would match the wrong font.
 pub fn enumValueNames(key: &Key) -> Vec<String> {
     let mut names = Vec::new();
     let mut buffer = [0u16; 512];

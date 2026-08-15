@@ -1,13 +1,24 @@
 [package]
 name = "common"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
 # What all three programs need and none of them owns: log plumbing, UTF-16
-# conversion for Win32, and the x.y.z version contract. Every module here was a
-# copy living in two or three crates before it moved.
+# conversion for Win32, the registry wrapper, and the x.y.z version contract.
+# Every module here was a copy living in two or three crates before it moved.
 [dependencies]
 # For the `--signature` half of the shared command line. Zero dependencies of
 # its own, so this crate stays as cheap to link as the things it serves.
 sigblock = { path = "../sigblock" }
+
+# src/reg.rs only. Same crate and version the three binaries already link, so
+# this adds an edge to the graph rather than a dependency to the tree.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    # Not elevation: `RegCreateKeyExW` takes a `*const SECURITY_ATTRIBUTES` (we
+    # pass null), and windows-sys gates the whole binding on this feature.
+    "Win32_Security",
+    "Win32_System_Registry",
+] }

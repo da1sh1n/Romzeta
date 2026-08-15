@@ -27,7 +27,6 @@ mod font;
 mod image;
 mod listener;
 mod payload;
-mod reg;
 mod shell;
 mod ui;
 mod version;

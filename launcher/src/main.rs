@@ -25,6 +25,7 @@ mod instance;
 mod launch;
 mod log;
 mod order;
+mod steam;
 mod ui;
 mod version;
 mod window;

@@ -118,9 +118,9 @@ window.__launchOutcome = function (index, ok, message) {
   if (ok) {
     document.body.classList.add("finishing");
     card.style.transform = card.style.transform + " scale(1.06)";
-    // Rust closes on its own deadline too, so a hiccup here can never leave the
-    // launcher sitting in front of a running game.
-    setTimeout(() => send("close"), OUTRO_MS);
+    // Rust minimizes on its own deadline too, so a hiccup here can never leave
+    // the launcher sitting in front of a running game.
+    setTimeout(() => send("hide"), OUTRO_MS);
     return;
   }
 
@@ -140,4 +140,14 @@ window.__launchOutcome = function (index, ok, message) {
       state = "idle";
     }, MOVE_MS);
   }, held);
+};
+
+// Called from Rust once the window is off screen. Torn down rather than played
+// backwards: nobody is watching it, and a launcher brought back from the
+// taskbar has to show its row of covers, not the last frame of a launch.
+window.__launchReset = function () {
+  document.body.classList.remove("launching", "finishing");
+  unpinCards();
+  placeNameplate();
+  state = "idle";
 };

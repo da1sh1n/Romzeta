@@ -8,7 +8,8 @@
 //! globals, handles the four IPC messages, and runs the event loop.
 //!
 //! ```text
-//! close             the close button, and the page's outro when a game is up
+//! close             the close button
+//! hide              the page's outro finished; a game is up
 //! launch:<id>       a cover was chosen
 //! mode:<name>       the order control changed; one of `order::MODES`
 //! order:<a,b,c>     covers were dragged into a new order in arrange mode
@@ -34,9 +35,11 @@ use crate::{assets, config, launch, order};
 
 enum UserEvent {
     CloseRequested,
+    /// The page has finished its outro over a game that came up.
+    HideRequested,
     /// How a launch ended, on its way from the worker thread in `launch.rs`
-    /// back to the page. `ok` means the game is up — the launcher's cue to
-    /// close itself; otherwise `message` is the line to put under the cover.
+    /// back to the page. `ok` means the game is up — the launcher's cue to get
+    /// out of its way; otherwise `message` is the line to put under the cover.
     LaunchOutcome {
         index: usize,
         ok: bool,
@@ -126,6 +129,10 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                 let _ = proxy.send_event(UserEvent::CloseRequested);
                 return;
             }
+            if body == "hide" {
+                let _ = proxy.send_event(UserEvent::HideRequested);
+                return;
+            }
 
             // The order control. Checked against the four names rather than
             // stored as given: a mode this launcher doesn't know is a bug on the
@@ -162,38 +169,32 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                 return;
             };
 
-            // This runs on the UI thread, so it only starts the process — the
-            // waiting (up to WINDOW_WAIT_MS of it) happens on a worker thread,
-            // which reports back through the same proxy the close button uses.
-            // Blocking here would freeze the very animation that exists to show
-            // the player something is happening.
-            match launch::spawn(&base_for_launch, game, index, show_console_window) {
-                Ok(child) => {
-                    let proxy = proxy.clone();
-                    let base = base_for_launch.clone();
-                    let game = game.clone();
-                    thread::spawn(move || {
-                        let (ok, message) = match launch::supervise(&base, &game, child) {
-                            launch::Outcome::Started => (true, String::new()),
-                            launch::Outcome::Failed(message) => (false, message),
-                        };
-                        let _ = proxy.send_event(UserEvent::LaunchOutcome { index, ok, message });
-                    });
-                }
-                Err(message) => {
-                    let _ = proxy.send_event(UserEvent::LaunchOutcome {
-                        index,
-                        ok: false,
-                        message,
-                    });
-                }
-            }
+            // The whole launch goes to a worker thread, which reports back
+            // through the same proxy the close button uses. Not one step of it
+            // may happen here: a game flagged `steam` waits up to STEAM_WAIT for
+            // the client before anything is even spawned, and blocking the UI
+            // thread would freeze the very animation that exists to show the
+            // player something is happening.
+            let proxy = proxy.clone();
+            let base = base_for_launch.clone();
+            let game = game.clone();
+            thread::spawn(move || {
+                let (ok, message) = match launch::run(&base, &game, index, show_console_window) {
+                    launch::Outcome::Started => (true, String::new()),
+                    launch::Outcome::Failed(message) => (false, message),
+                };
+                let _ = proxy.send_event(UserEvent::LaunchOutcome { index, ok, message });
+            });
         })
         .build(&window)?;
 
     // Set once a game is confirmed up: the page is playing its outro and will
-    // ask to close, and this is the deadline by which we close regardless.
-    let mut exit_deadline: Option<Instant> = None;
+    // ask to go, and this is the deadline by which we go regardless.
+    let mut hide_deadline: Option<Instant> = None;
+    // Raised by whichever of those two arrives first, and lowered again at the
+    // end of the pass that acts on it — the launcher can be brought back from
+    // the taskbar and start a second game.
+    let mut hiding = false;
     // Latches on the first request to quit. Control flow is decided at the end
     // of every pass, and tao keeps delivering events (window teardown, redraw
     // bookkeeping) after Exit is asked for — without this latch one of those
@@ -211,6 +212,7 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                 ..
             }
             | Event::UserEvent(UserEvent::CloseRequested) => exiting = true,
+            Event::UserEvent(UserEvent::HideRequested) => hiding = true,
             Event::UserEvent(UserEvent::LaunchOutcome { index, ok, message }) => {
                 // The page decides what this looks like: finish the spinner and
                 // close on success, or unwind the transition and mark the cover
@@ -234,7 +236,7 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                     // a stick, and nothing waits on the result.
                     usage_order = order::promote(&usage_order, game_count, index);
                     config::store(&base_for_usage, "usage_order", config::ids(&usage_order));
-                    exit_deadline = Some(Instant::now() + LAUNCH_EXIT_FALLBACK);
+                    hide_deadline = Some(Instant::now() + LAUNCH_HIDE_FALLBACK);
                 }
             }
             _ => {}
@@ -246,10 +248,10 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
         // window's lifetime; `window` is also what the topmost drop needs.)
         // Let-chains: bind the deadline and test it in one condition, so an
         // unarmed `None` and a deadline not yet reached take the same path.
-        if let Some(deadline) = exit_deadline
+        if let Some(deadline) = hide_deadline
             && Instant::now() >= deadline
         {
-            exiting = true;
+            hiding = true;
         }
         if let Some(deadline) = topmost_until
             && Instant::now() >= deadline
@@ -257,13 +259,24 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
             window::dropTopmost(&window);
             topmost_until = None;
         }
+        if hiding {
+            hiding = false;
+            // Disarmed here rather than left to expire, so the page's request
+            // and the backstop can't minimize the same launch twice.
+            hide_deadline = None;
+            topmost_until = None;
+            window::minimize(&window);
+            // Off screen is the only moment the outro can be torn down without
+            // being seen unwinding.
+            let _ = webview.evaluate_script("window.__launchReset && window.__launchReset();");
+        }
         *control_flow = if exiting {
             ControlFlow::Exit
         } else {
             // Whichever is sooner: two independent deadlines can be armed at
             // once, and waking at the later one would let the earlier pass
             // unnoticed until some other event happened to arrive.
-            match exit_deadline.into_iter().chain(topmost_until).min() {
+            match hide_deadline.into_iter().chain(topmost_until).min() {
                 Some(deadline) => ControlFlow::WaitUntil(deadline),
                 None => ControlFlow::Wait,
             }

@@ -856,6 +856,13 @@ body.launching .card.chosen img {
   font-size: var(--type-unit);
   letter-spacing: 0;
   text-align: center;
+  /* Contrast comes from the plate, not from the glyphs: at 11px this face's
+     strokes and its counters are both one pixel, so a shadow or a heavier
+     weight fills the holes and the word goes solid. Whole-pixel padding keeps
+     the line box on the grid the rest of the file holds. */
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
 }
 
 /* ========== A Game Whose Exe Isn't on the Cartridge ========== */
@@ -1120,7 +1127,7 @@ body.launching #status {
 
 /* The outro, once the game's window is up: the screen settles to a flat field
    of the cartridge's own colour and the cover lifts away, covering the moment
-   the launcher exits. Its own background rather than the black this used to
+   the launcher minimizes. Its own background rather than the black this used to
    be — the shelf emptying, which reads right whatever colour the shelf is,
    where a hard cut to black on a pale cartridge reads as a fault. */
 body.finishing #scrim {
@@ -1149,7 +1156,7 @@ body.finishing .card.chosen {
    rather than being watched travelling there. That matters because the page
    drives its own timing off these transitions' durations (MOVE_MS, OUTRO_MS
    in app.js), and a launch that skipped a step here would be a launch that
-   never closed the window. */
+   never got the window off screen. */
 @media (prefers-reduced-motion: reduce) {
   .card,
   .cover,

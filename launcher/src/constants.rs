@@ -192,10 +192,10 @@ pub const DEFAULT_ORDER_MODE: &str = "usage";
 /// Handed to the page as `__UI__.minLoadingAfterFail`; not a config setting.
 pub const MIN_LOADING_AFTER_FAIL: Duration = Duration::from_millis(1000);
 
-/// Backstop for closing after a *successful* launch. The page normally plays
-/// its outro and asks to close; this guarantees the launcher never stays on
-/// screen in front of a running game if the page's JS is broken or missing.
-pub const LAUNCH_EXIT_FALLBACK: Duration = Duration::from_millis(1200);
+/// Backstop for minimizing after a *successful* launch. The page normally plays
+/// its outro and asks to go; this guarantees the launcher never stays on screen
+/// in front of a running game if the page's JS is broken or missing.
+pub const LAUNCH_HIDE_FALLBACK: Duration = Duration::from_millis(1200);
 
 /// How long the window stays pinned above everything else after it opens.
 ///
@@ -224,6 +224,20 @@ pub const READY_CONFIRM: Duration = Duration::from_millis(400);
 
 /// How often the two windows above check whether the process is still there.
 pub const LIVENESS_POLL: Duration = Duration::from_millis(50);
+
+// ── Starting Steam (steam.rs) ────────────────────────────────────────────
+
+/// How long to wait for the Steam client to become able to answer a game,
+/// measured from the moment it was asked to start.
+///
+/// Generous because a cold Steam that decides to update itself genuinely takes
+/// this long, and failing a launch that was about to work is worse than a wait
+/// the player can watch. A client that is up but not signed in burns this too:
+/// the login is part of being ready.
+pub const STEAM_WAIT: Duration = Duration::from_secs(120);
+
+/// How often the wait above re-reads Steam's `ActiveProcess` key.
+pub const STEAM_POLL: Duration = Duration::from_millis(250);
 
 // ── Logs (log.rs) ────────────────────────────────────────────────────────
 

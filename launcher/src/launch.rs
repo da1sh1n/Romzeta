@@ -18,14 +18,35 @@ use std::time::Instant;
 use crate::catalog::{self, Game};
 use crate::constants::*;
 use crate::log;
+use crate::steam;
 
 /// What became of one launch, as far as the player is concerned.
 pub enum Outcome {
-    /// The game is up. The launcher's cue to close itself.
+    /// The game is up. The launcher's cue to minimize itself.
     Started,
     /// It isn't, and this is the one short line to put under its cover. The
     /// long version is already in `logs/launcher.log`.
     Failed(String),
+}
+
+/// Everything one launch involves, from the click to the verdict.
+///
+/// Call on a worker thread. All three stages block: a game flagged `steam` waits
+/// up to [`STEAM_WAIT`] for the client, and `supervise` waits up to
+/// [`WINDOW_WAIT_MS`] for a window.
+pub fn run(base: &Path, game: &Game, index: usize, show_console_window: bool) -> Outcome {
+    // Before the spawn, not after: the game's DRM asks for the client during its
+    // own startup, so a client that arrives late is a client that arrived too
+    // late.
+    if game.steam
+        && let Err(message) = steam::ensureRunning(base)
+    {
+        return Outcome::Failed(message);
+    }
+    match spawn(base, game, index, show_console_window) {
+        Ok(child) => supervise(base, game, child),
+        Err(message) => Outcome::Failed(message),
+    }
 }
 
 /// Starts `game`'s exe and hands back the running `Child`, which the caller
@@ -35,7 +56,7 @@ pub enum Outcome {
 /// The working directory is the exe's **own folder**, not the cartridge root:
 /// games overwhelmingly resolve assets relative to themselves, and one started
 /// from the wrong cwd fails in ways that look like corruption.
-pub fn spawn(
+fn spawn(
     base: &Path,
     game: &Game,
     index: usize,
@@ -94,7 +115,7 @@ pub fn spawn(
 
 /// Blocks until the game is up (or clearly isn't). Call on a worker thread —
 /// never on the UI thread, which has a window to keep repainting.
-pub fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
+fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
     match waitForWindow(&child) {
         // A window came up — but hold on briefly before believing it. A game
         // that flashes an error box and quits satisfies WaitForInputIdle just
@@ -209,7 +230,7 @@ fn waitForWindow(_child: &Child) -> Window {
 /// one — only a console program (typically a stand-in cover, since a real
 /// game is GUI) is ever affected.
 #[cfg(windows)]
-fn suppressConsoleWindow(command: &mut Command) {
+pub(crate) fn suppressConsoleWindow(command: &mut Command) {
     use std::os::windows::process::CommandExt;
 
     // windows_sys::Win32::System::Threading::CREATE_NO_WINDOW, spelled out
@@ -219,7 +240,7 @@ fn suppressConsoleWindow(command: &mut Command) {
 }
 
 #[cfg(not(windows))]
-fn suppressConsoleWindow(_command: &mut Command) {}
+pub(crate) fn suppressConsoleWindow(_command: &mut Command) {}
 
 /// Maps an OS spawn error to something worth showing a player. Anything beyond
 /// the two everyday causes points at the log rather than guessing.

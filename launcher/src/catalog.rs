@@ -22,6 +22,11 @@ pub struct Game {
     pub name: String,
     pub exe: String,
     pub image: String,
+    /// Whether this game's DRM needs the Steam client up before it will run.
+    /// Absent on every cartridge written before the installer offered the
+    /// checkbox, which is what `default` is here for.
+    #[serde(default)]
+    pub steam: bool,
 }
 
 /// Reads `catalog.json` from the content folder (already seeded by

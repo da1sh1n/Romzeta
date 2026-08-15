@@ -125,8 +125,8 @@ What follows from having no elevated path at all:
   to never needed it, and a blanket `requireAdministrator` manifest would have put a UAC
   prompt in front of the common case to serve the rare one.
 - No process-token check, no `ShellExecuteW "runas"`, no elevated relaunch, no second copy of
-  the installer racing the first over one registry value. The
-  `Win32_Security` / `Win32_UI_Shell` windows-sys features are gone with them.
+  the installer racing the first over one registry value. `ShellExecuteW` is still linked, but
+  only ever with the `open` verb on an `https` link — see `src/shell.rs::openUrl`.
 
 ### Where the listener lives
 
@@ -158,7 +158,7 @@ holds the login entry.
 Which job runs is decided by the target volume:
 
 ```text
-volume picked  →  launcher.exe we signed?  →  yes → edit mode  (add / remove games, rename)
+volume picked  →  launcher.exe we signed?  →  yes → edit mode  (add / edit / remove games, rename)
                         │ no
                         └─────────────────────→ create mode (name → games → exes → images → copy)
 ```
@@ -490,7 +490,10 @@ Signature-based trust used to be the second item here. It shipped — see
       cartridge's whole identity.
 - [x] Listener install into `%LOCALAPPDATA%\Romzeta` — the only location — and a `Run` entry on
       Windows. Installs left by an earlier build elsewhere are cleared out.
-- [x] Edit mode: add games, remove games, rename, refresh a stale launcher.
+- [x] Edit mode: add games, remove games, rename the cartridge, refresh a stale launcher.
+- [x] Change a game already on the cartridge — its name, its executable, its Steam flag and app
+      id, its cover — without copying the folder again. The slug never moves, so a rename is a
+      catalog rewrite and nothing else.
 - [x] Free-space precheck and failure/rollback handling.
 - [x] Uninstall / repair path.
 - [x] **Exercised end to end on real media**: a cartridge written to a physical drive, then

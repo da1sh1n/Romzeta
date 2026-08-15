@@ -31,6 +31,16 @@ pub struct Entry {
     pub name: String,
     pub exe: String,
     pub image: String,
+    /// Whether the launcher should bring the Steam client up before starting
+    /// this game. Skipped when false so a cartridge full of DRM-free games gains
+    /// no key it never needed, and so re-writing an old catalog leaves it alone.
+    #[serde(default, skip_serializing_if = "isFalse")]
+    pub steam: bool,
+}
+
+/// `skip_serializing_if` wants `fn(&T) -> bool`, which `Not::not` is not.
+fn isFalse(value: &bool) -> bool {
+    !*value
 }
 
 /// Reads an existing cartridge's catalog.
@@ -147,6 +157,33 @@ pub fn gameDir(root: &Path, entry: &Entry) -> Option<PathBuf> {
         return None;
     }
     Some(root.join(&parts[0]).join(&parts[1]))
+}
+
+/// The `<slug>` an entry's files live under, from the `exe` path that names it.
+///
+/// Derived rather than re-slugged from the name, because the two part company
+/// the moment a game is renamed: the folder is fixed at add time and nothing
+/// afterwards reads the name to find it.
+pub fn slugOf(entry: &Entry) -> Option<String> {
+    let mut parts = Path::new(&entry.exe).components().filter_map(|c| match c {
+        Component::Normal(part) => Some(part.to_string_lossy().to_string()),
+        _ => None,
+    });
+    (parts.next()? == GAMES_DIR).then(|| parts.next())?
+}
+
+/// An entry's executable, relative to its own folder — `bin/game.exe` out of
+/// `games/<slug>/bin/game.exe`. The form the picker and the scan both speak.
+pub fn exeRelative(entry: &Entry) -> Option<PathBuf> {
+    let mut parts = Path::new(&entry.exe).components().filter_map(|c| match c {
+        Component::Normal(part) => Some(part.to_os_string()),
+        _ => None,
+    });
+    // Past `games` and past `<slug>`; whatever is left is the path inside.
+    (parts.next()? == GAMES_DIR).then_some(())?;
+    parts.next()?;
+    let relative: PathBuf = parts.collect();
+    (!relative.as_os_str().is_empty()).then_some(relative)
 }
 
 /// The cover file on the cartridge for one entry, with the same escape check.

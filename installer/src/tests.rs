@@ -101,6 +101,35 @@ mod catalog {
     use std::path::Path;
 
     #[test]
+    fn the_steam_flag_is_written_only_when_it_is_set() {
+        // Both halves are the contract with the launcher's `Game`. Writing
+        // `"steam": false` into every entry would add a key to catalogs that
+        // never needed one, and failing to read a catalog that lacks it would
+        // break every cartridge written before the checkbox existed.
+        let plain = Entry {
+            name: "celeste".into(),
+            exe: "games/celeste/celeste.exe".into(),
+            image: "assets/images/celeste.png".into(),
+            steam: false,
+        };
+        let json = serde_json::to_string(&plain).unwrap();
+        assert!(!json.contains("steam"), "{json}");
+        assert!(
+            serde_json::to_string(&Entry {
+                steam: true,
+                ..plain.clone()
+            })
+            .unwrap()
+            .contains(r#""steam":true"#)
+        );
+
+        let older = r#"[{"name":"celeste","exe":"games/celeste/celeste.exe",
+                        "image":"assets/images/celeste.png"}]"#;
+        let read: Vec<Entry> = serde_json::from_str(older).unwrap();
+        assert_eq!(read, vec![plain]);
+    }
+
+    #[test]
     fn covers_are_written_under_assets() {
         // The path this produces goes into catalog.json and is what the
         // launcher asks its app:// protocol for, so the prefix is a contract
@@ -128,6 +157,7 @@ mod catalog {
             name: "bg3".into(),
             exe: "games/bg3/bg3.exe".into(),
             image: "images/bg3.png".into(),
+            steam: false,
         };
         assert_eq!(
             imageFile(root, &legacy),
@@ -142,6 +172,40 @@ mod catalog {
             imageFile(root, &current),
             Some(root.join("assets").join("images").join("bg3.png"))
         );
+    }
+
+    #[test]
+    fn an_entry_says_which_folder_and_exe_are_its_own() {
+        use crate::catalog::{exeRelative, slugOf};
+        use std::path::PathBuf;
+
+        let nested = Entry {
+            name: "Portal 2".into(),
+            exe: "games/portal_2/bin/portal2.exe".into(),
+            image: "assets/images/portal_2.png".into(),
+            steam: true,
+        };
+        assert_eq!(slugOf(&nested).as_deref(), Some("portal_2"));
+        assert_eq!(exeRelative(&nested), Some(PathBuf::from("bin/portal2.exe")));
+
+        // The slug is read off the path, never re-derived from the name — the
+        // two part company the moment a game is renamed, and the folder is what
+        // the files are actually in.
+        let renamed = Entry {
+            name: "Something Else Entirely".into(),
+            ..nested.clone()
+        };
+        assert_eq!(slugOf(&renamed).as_deref(), Some("portal_2"));
+
+        // Anything not under games/<slug>/<file> names no folder of its own,
+        // which is the same refusal `gameDir` makes.
+        for exe in ["games/loose.exe", "elsewhere/x/y.exe", "games/portal_2"] {
+            let odd = Entry {
+                exe: exe.into(),
+                ..nested.clone()
+            };
+            assert_eq!(exeRelative(&odd), None, "{exe}");
+        }
     }
 
     #[test]
@@ -162,6 +226,7 @@ mod catalog {
             name: "evil".into(),
             exe: "../../Windows/System32/cmd.exe".into(),
             image: "../../Windows/x.png".into(),
+            steam: false,
         };
         assert_eq!(gameDir(root, &escape), None);
         assert_eq!(imageFile(root, &escape), None);
@@ -170,6 +235,7 @@ mod catalog {
             name: "bg3".into(),
             exe: "games/bg3/bin/bg3.exe".into(),
             image: "images/bg3.png".into(),
+            steam: false,
         };
         assert_eq!(gameDir(root, &ok), Some(root.join("games").join("bg3")));
         assert_eq!(
@@ -182,8 +248,214 @@ mod catalog {
             name: "loose".into(),
             exe: "games/loose.exe".into(),
             image: "images/loose.png".into(),
+            steam: false,
         };
         assert_eq!(gameDir(root, &shallow), None);
+    }
+}
+
+mod steam {
+    use crate::app::Details;
+    use crate::detect::Scan;
+    use crate::steam::{appidFileIn, manifest, parse};
+    use std::path::{Path, PathBuf};
+
+    /// A game past every earlier blocker, so what the app id does to `blocker`
+    /// is the only thing under test.
+    fn ready(appid: &str, steam: bool) -> Details {
+        Details {
+            name: "Portal 2".into(),
+            scanning: None,
+            scan: Some(Scan {
+                candidates: Vec::new(),
+                total_bytes: 0,
+                file_count: 0,
+                cancelled: false,
+            }),
+            selected: None,
+            manual_exe: Some(PathBuf::from("portal2.exe")),
+            exe_fallback: None,
+            image: Some(PathBuf::from(r"C:\art\cover.png")),
+            image_warning: None,
+            steam,
+            appid: appid.into(),
+            appid_found: None,
+        }
+    }
+
+    #[test]
+    fn an_app_id_is_digits_and_not_zero() {
+        assert_eq!(parse("620"), Some(620));
+        // Whatever a file or a paste brought along with it.
+        assert_eq!(parse(" 620\r\n"), Some(620));
+        assert_eq!(parse(""), None);
+        assert_eq!(parse("abc"), None);
+        assert_eq!(parse("620a"), None);
+        // What an empty or malformed manifest would otherwise parse to.
+        assert_eq!(parse("0"), None);
+    }
+
+    #[test]
+    fn a_manifest_gives_up_its_id_and_folder() {
+        let acf = "\"AppState\"\n\
+                   {\n\
+                   \t\"appid\"\t\t\"620\"\n\
+                   \t\"universe\"\t\t\"1\"\n\
+                   \t\"name\"\t\t\"Portal 2\"\n\
+                   \t\"installdir\"\t\t\"Portal 2\"\n\
+                   }\n";
+        assert_eq!(manifest(acf), Some((620, "Portal 2".into())));
+
+        // Half a manifest is no answer at all — the folder is what says this
+        // manifest is the right one out of a library holding fifty.
+        assert_eq!(manifest("\t\"appid\"\t\t\"620\"\n"), None);
+        assert_eq!(manifest(""), None);
+    }
+
+    #[test]
+    fn the_id_file_lands_beside_the_exe() {
+        // The rule that matters: steam_api.dll reads the file next to the
+        // module it is loaded into, so a nested exe does not get one at the
+        // game folder's root.
+        let destination = Path::new(r"E:\games\portal2");
+        assert_eq!(
+            appidFileIn(destination, Path::new("bin/portal2.exe")),
+            destination.join("bin").join("steam_appid.txt")
+        );
+        assert_eq!(
+            appidFileIn(destination, Path::new("portal2.exe")),
+            destination.join("steam_appid.txt")
+        );
+    }
+
+    #[test]
+    fn a_ticked_steam_box_needs_an_id() {
+        assert_eq!(
+            ready("", true).blocker(true).as_deref(),
+            Some("needs a Steam app id")
+        );
+        assert_eq!(
+            ready("not a number", true).blocker(true).as_deref(),
+            Some("has a Steam app id that isn't a number")
+        );
+        assert_eq!(ready("620", true).blocker(true), None);
+        // Unticked, the field is nobody's business either way.
+        assert_eq!(ready("", false).blocker(true), None);
+        assert_eq!(ready("nonsense", false).blocker(true), None);
+    }
+}
+
+mod edit {
+    use crate::app::{Details, Edit};
+    use crate::catalog::Entry;
+    use crate::detect::Scan;
+    use std::path::PathBuf;
+
+    fn onCartridge() -> Edit {
+        let original = Entry {
+            name: "Portal 2".into(),
+            exe: "games/portal_2/bin/portal2.exe".into(),
+            image: "assets/images/portal_2.png".into(),
+            steam: true,
+        };
+        Edit {
+            dir: PathBuf::from(r"E:\games\portal_2"),
+            slug: "portal_2".into(),
+            open: true,
+            appid_original: "620".into(),
+            details: Details {
+                name: original.name.clone(),
+                scanning: None,
+                scan: Some(Scan {
+                    candidates: Vec::new(),
+                    total_bytes: 0,
+                    file_count: 0,
+                    cancelled: false,
+                }),
+                selected: None,
+                manual_exe: None,
+                exe_fallback: Some(PathBuf::from("bin/portal2.exe")),
+                image: None,
+                image_warning: None,
+                steam: original.steam,
+                appid: "620".into(),
+                appid_found: None,
+            },
+            original,
+        }
+    }
+
+    #[test]
+    fn an_untouched_row_changes_nothing() {
+        let edit = onCartridge();
+        assert!(!edit.changed());
+        assert_eq!(edit.entry(), edit.original);
+        // Nothing to fall back *from*: the exe the catalog names is what the
+        // picker reports until the user picks another.
+        assert_eq!(
+            edit.details.exeRelative(),
+            Some(PathBuf::from("bin/portal2.exe"))
+        );
+    }
+
+    #[test]
+    fn a_rename_leaves_every_path_where_it_was() {
+        // The whole reason renaming is cheap. Re-slugging the new name would
+        // mean moving every file in a folder that can be tens of gigabytes,
+        // for a path nobody ever sees.
+        let mut edit = onCartridge();
+        edit.details.name = "  Portal II  ".into();
+
+        let entry = edit.entry();
+        assert!(edit.changed());
+        assert_eq!(entry.name, "Portal II");
+        assert_eq!(entry.exe, edit.original.exe);
+        assert_eq!(entry.image, edit.original.image);
+        // A rename touches no file, so nothing to rewrite beside the exe.
+        assert_eq!(edit.appidRewrite(), None);
+    }
+
+    #[test]
+    fn a_new_cover_follows_its_own_extension() {
+        let mut edit = onCartridge();
+        edit.details.image = Some(PathBuf::from(r"C:\art\new.JPG"));
+        assert_eq!(edit.entry().image, "assets/images/portal_2.jpg");
+
+        // Same extension means the same path — the entry is untouched and it
+        // is the file underneath that changes, which `changed` has to catch on
+        // its own or the new art would never be copied.
+        let mut same = onCartridge();
+        same.details.image = Some(PathBuf::from(r"C:\art\new.png"));
+        assert_eq!(same.entry(), same.original);
+        assert!(same.changed());
+    }
+
+    #[test]
+    fn the_app_id_file_is_rewritten_only_when_it_would_differ() {
+        // Already ticked, same id, same exe: nothing to write.
+        assert_eq!(onCartridge().appidRewrite(), None);
+
+        let mut retyped = onCartridge();
+        retyped.details.appid = "400".into();
+        assert_eq!(retyped.appidRewrite(), Some(400));
+
+        // Just ticked: the file may not be there at all yet.
+        let mut ticked = onCartridge();
+        ticked.original.steam = false;
+        assert_eq!(ticked.appidRewrite(), Some(620));
+
+        // The exe moved, so the file has to appear beside the new one — the
+        // old copy is left alone, being one we cannot tell from the game's.
+        let mut moved = onCartridge();
+        moved.details.manual_exe = Some(PathBuf::from("portal2.exe"));
+        assert_eq!(moved.appidRewrite(), Some(620));
+
+        // Unticked: the launcher stops starting Steam and no file is touched.
+        let mut unticked = onCartridge();
+        unticked.details.steam = false;
+        assert_eq!(unticked.appidRewrite(), None);
+        assert!(unticked.changed());
+        assert!(!unticked.entry().steam);
     }
 }
 
@@ -393,5 +665,71 @@ mod volume {
                 );
             }
         }
+    }
+}
+
+mod wake {
+    use crate::wake::{PROBES, probe};
+    use std::path::PathBuf;
+
+    fn tempDir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "romzeta-installer-wake-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    /// Three reads and not one. The first can be answered from the OS cache
+    /// while the disk underneath is still spinning up, so a probe count of one
+    /// would pass on a drive that is not actually awake — which is the whole
+    /// thing this gate exists to catch.
+    #[test]
+    fn a_drive_that_answers_is_read_three_times() {
+        let dir = tempDir("awake");
+        let mut reports = 0u64;
+        let mut last_done = 0u64;
+        probe(&dir, &mut |progress| {
+            reports += 1;
+            last_done = progress.done;
+            assert_eq!(progress.total, PROBES);
+        })
+        .expect("a directory that exists must answer");
+
+        assert_eq!(reports, PROBES + 1, "one report per round, plus the finish");
+        assert_eq!(last_done, PROBES, "the bar must end full");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The unplugged drive, and the reason the failure has to name the path:
+    /// the message is the only thing the user gets back on the Review screen,
+    /// and "it did not work" would leave them nothing to act on.
+    #[test]
+    fn a_drive_that_is_not_there_fails_on_the_first_round() {
+        let dir = tempDir("gone");
+        std::fs::remove_dir_all(&dir).expect("remove");
+
+        let problem = probe(&dir, &mut |_| {}).expect_err("a missing path cannot answer");
+        assert!(problem.contains(&dir.display().to_string()), "{problem}");
+        assert!(
+            problem.contains(&format!("probe 1 of {PROBES}")),
+            "{problem}"
+        );
+    }
+
+    /// A drive letter picked up by something that is not a volume root. It
+    /// answers `metadata` perfectly well, which is why the kind is checked and
+    /// not just the existence.
+    #[test]
+    fn a_path_that_is_not_a_directory_is_refused() {
+        let dir = tempDir("file");
+        let file = dir.join("not-a-drive-root");
+        std::fs::write(&file, b"").expect("write");
+
+        let problem = probe(&file, &mut |_| {}).expect_err("a file is not a cartridge");
+        assert!(problem.contains("not a directory"), "{problem}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

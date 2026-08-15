@@ -27,6 +27,7 @@ use std::sync::atomic::AtomicBool;
 use crate::catalog::{self, Entry};
 use crate::copy;
 use crate::payload;
+use crate::steam;
 
 pub const CONFIG_FILE: &str = "config.toml";
 
@@ -56,6 +57,11 @@ pub struct PlannedGame {
     pub image: PathBuf,
     /// Measured by the scan, for the progress bar and the space check.
     pub bytes: u64,
+    /// Whether the launcher should start Steam before this game.
+    pub steam: bool,
+    /// The id written into `steam_appid.txt` beside the copied exe. `Some` only
+    /// when `steam` is ticked — the file means nothing without the client.
+    pub appid: Option<u32>,
 }
 
 impl PlannedGame {
@@ -64,18 +70,43 @@ impl PlannedGame {
             name: self.name.clone(),
             exe: catalog::exePath(&self.slug, &self.exeRelative),
             image: catalog::imagePath(&self.slug, &self.image),
+            steam: self.steam,
         }
     }
+}
+
+/// A game already on the cartridge that this run changes, with every path
+/// resolved. Its folder is not touched — the slug never moves, so even a
+/// rename is a catalog rewrite and nothing else.
+///
+/// One of these with no cover and no app id is a rename, and still belongs in
+/// the plan: it is what says the catalog has to be written.
+pub struct EditedGame {
+    pub name: String,
+    /// Which `games/<slug>/` this is. The identity that survives a rename, and
+    /// what the Review screen tells changed games from untouched ones by.
+    pub slug: String,
+    /// What this changes, in the user's words, for the Review screen.
+    pub changes: Vec<String>,
+    /// A replacement cover: where it comes from, and where it lands.
+    pub cover: Option<(PathBuf, PathBuf)>,
+    /// The cover the entry used to name, when the replacement lands elsewhere.
+    /// Deleted after the catalog is written, or the cartridge keeps two.
+    pub stale_cover: Option<PathBuf>,
+    /// `steam_appid.txt` to write beside this game's exe, and what to put in it.
+    pub appid: Option<(PathBuf, u32)>,
 }
 
 /// Everything one run of the installer will do to one volume.
 pub struct Plan {
     pub root: PathBuf,
-    /// Catalog entries already on the cartridge that stay untouched.
+    /// Catalog entries that stay on the cartridge, changes already applied.
     pub keep: Vec<Entry>,
     /// Entries to delete, with their files.
     pub remove: Vec<Entry>,
     pub add: Vec<PlannedGame>,
+    /// The subset of `keep` this run has to do something about.
+    pub edit: Vec<EditedGame>,
     /// The name to give the drive, when it differs from the one it has now.
     /// `Some("")` clears the label; `None` leaves it alone.
     pub label: Option<String>,
@@ -108,11 +139,14 @@ impl Plan {
 
     /// True when this plan would change nothing.
     ///
-    /// A rename counts. Renaming is the one thing a plan can do without adding
-    /// or removing a game, and leaving it out here would let the footer refuse a
-    /// plan whose whole point was the new name.
+    /// A rename counts — the drive's, and a game's. Both are things a plan can
+    /// do without adding or removing anything, and leaving them out here would
+    /// let the footer refuse a plan whose whole point was the new name.
     pub fn isEmpty(&self) -> bool {
-        self.add.is_empty() && self.remove.is_empty() && self.label.is_none()
+        self.add.is_empty()
+            && self.remove.is_empty()
+            && self.edit.is_empty()
+            && self.label.is_none()
     }
 }
 
@@ -185,9 +219,51 @@ pub fn apply(
             return Err(unwind(&created, e.message()));
         }
 
+        // The one file this program adds to a game folder rather than copying
+        // into it. Bare digits: no newline and no BOM, which is what
+        // steam_api.dll's reader and every wrapper around it agree on.
+        //
+        // Not pushed onto `created` — `destination` already is, and unwind takes
+        // the whole folder with it.
+        if let Some(appid) = game.appid {
+            let file = steam::appidFileIn(&destination, &game.exeRelative);
+            if let Err(e) = copy::bytes(&file, appid.to_string().as_bytes()) {
+                return Err(unwind(&created, e.message()));
+            }
+        }
+
         let cover = root.join(catalog::imagePath(&game.slug, &game.image));
         created.push(cover.clone());
         if let Err(e) = copy::single(&game.image, &cover, cancel) {
+            return Err(unwind(&created, e.message()));
+        }
+    }
+
+    // Edits move at most one cover each and never touch a game folder, so they
+    // sit after the copying and before the catalog that will name their result.
+    for game in &plan.edit {
+        report(Progress {
+            done,
+            total,
+            label: format!("Updating {}", game.name),
+        });
+        if let Some((source, destination)) = &game.cover {
+            // A cover landing somewhere the catalog does not name yet is this
+            // run's to undo. One replacing a file in place is not undoable, and
+            // is cover art — the trade is worth naming, not worth avoiding.
+            if !destination.exists() {
+                created.push(destination.clone());
+            }
+            if let Err(e) = copy::single(source, destination, cancel) {
+                return Err(unwind(&created, e.message()));
+            }
+        }
+        // Written into a folder that is already on the drive, so like the cover
+        // above this one cannot be rolled back. Four bytes of a file the game's
+        // own DRM reads.
+        if let Some((file, appid)) = &game.appid
+            && let Err(e) = copy::bytes(file, appid.to_string().as_bytes())
+        {
             return Err(unwind(&created, e.message()));
         }
     }
@@ -203,6 +279,17 @@ pub fn apply(
     // older than intended rather than one listing games it does not have.
     if let Err(e) = catalog::write(root, &plan.entries()) {
         return Err(unwind(&created, format!("catalog.json: {e}")));
+    }
+
+    // Only now, with the catalog naming the new file: a cover deleted before
+    // this point is one an entry still points at. Failures are swallowed for
+    // the same reason removal swallows them — a leftover cover is harmless.
+    for stale in plan
+        .edit
+        .iter()
+        .filter_map(|game| game.stale_cover.as_ref())
+    {
+        let _ = fs::remove_file(stale);
     }
 
     // config.toml is look and feel, and it belongs to whoever owns the

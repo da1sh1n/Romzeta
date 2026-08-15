@@ -14,15 +14,17 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::autoplay;
-use crate::cartridge::{self, Plan, PlannedGame};
+use crate::cartridge::{self, EditedGame, Plan, PlannedGame};
 use crate::catalog::{self, Entry};
 use crate::copy;
 use crate::detect;
 use crate::image;
 use crate::listener;
 use crate::payload;
+use crate::steam;
 use crate::version::{self, Version};
 use crate::volume::{self, Volume};
+use crate::wake;
 use crate::work::{Job, Scanning};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -45,49 +47,75 @@ pub enum Mode {
     Edit,
 }
 
-/// One game on its way onto the cartridge.
-pub struct Draft {
-    pub source: PathBuf,
+/// Everything about a game a person gets to set: its name, which file starts
+/// it, whether Steam has to be up first, and its cover.
+///
+/// The same four either way, so a game being added and a game already on the
+/// cartridge share one struct and one set of controls — see
+/// [`crate::ui::games::details`]. What differs is only the folder they point at
+/// and whether there is already an answer to fall back to.
+pub struct Details {
     pub name: String,
     /// Running until the folder walk finishes.
     pub scanning: Option<Scanning>,
     pub scan: Option<detect::Scan>,
     /// Index into `scan.candidates`, or `None` when the exe came from Browse.
     pub selected: Option<usize>,
-    /// Set only by the manual override; relative to `source`.
+    /// Set only by the manual override; relative to the game folder.
     pub manual_exe: Option<PathBuf>,
+    /// The exe the catalog already names, for a game on the cartridge. `None`
+    /// while one is being added — there is nothing to fall back to yet.
+    pub exe_fallback: Option<PathBuf>,
+    /// A cover from the user's disk. For a game already on the cartridge,
+    /// `None` means the one it has stays.
     pub image: Option<PathBuf>,
     /// The 2:3 note, if the chosen cover isn't that shape.
     pub image_warning: Option<String>,
+    /// Whether this game's DRM needs the Steam client up before it will run.
+    pub steam: bool,
+    /// The app id that goes in `steam_appid.txt`. Text rather than a number, so
+    /// a half-typed one is not reinterpreted between keystrokes.
+    pub appid: String,
+    /// Where `appid` was read from, or `None` once it was typed by hand.
+    pub appid_found: Option<steam::Found>,
 }
 
-impl Draft {
-    fn new(ctx: &egui::Context, source: PathBuf) -> Draft {
-        Draft {
-            name: detect::defaultName(&source),
-            scanning: Some(Scanning::start(ctx, source.clone())),
-            source,
+impl Details {
+    /// Starts the folder walk and fills in what can be known without it.
+    fn new(ctx: &egui::Context, folder: &Path, exe_fallback: Option<PathBuf>) -> Details {
+        Details {
+            name: detect::defaultName(folder),
+            scanning: Some(Scanning::start(ctx, folder.to_path_buf())),
             scan: None,
             selected: None,
             manual_exe: None,
+            exe_fallback,
             image: None,
             image_warning: None,
+            steam: false,
+            appid: String::new(),
+            appid_found: None,
         }
     }
 
-    /// Picks up the finished scan and preselects a clear winner.
+    /// Picks up the finished scan and decides what the exe field should say.
     pub fn poll(&mut self) {
         let Some(scanning) = &self.scanning else {
             return;
         };
         let Some(scan) = scanning.take() else { return };
         self.scanning = None;
-        // Only a *clear* winner is preselected. When the top two are too close
-        // to call, the field is left empty and the user has to choose — a guess
-        // presented as a decision is worse than no guess.
-        self.selected = scan
-            .clearWinner()
-            .and_then(|winner| scan.candidates.iter().position(|c| c == winner));
+        self.selected = match &self.exe_fallback {
+            // A game that already starts something: find that file in the list
+            // rather than second-guessing a decision already made.
+            Some(current) => scan.candidates.iter().position(|c| c.relative == *current),
+            // Only a *clear* winner is preselected. When the top two are too
+            // close to call, the field is left empty and the user has to
+            // choose — a guess presented as a decision is worse than no guess.
+            None => scan
+                .clearWinner()
+                .and_then(|winner| scan.candidates.iter().position(|c| c == winner)),
+        };
         self.scan = Some(scan);
     }
 
@@ -95,22 +123,26 @@ impl Draft {
         self.scanning.is_some()
     }
 
-    /// The chosen executable, relative to the game folder.
+    /// The executable, relative to the game folder.
     pub fn exeRelative(&self) -> Option<PathBuf> {
         if let Some(manual) = &self.manual_exe {
             return Some(manual.clone());
         }
-        let scan = self.scan.as_ref()?;
-        Some(scan.candidates.get(self.selected?)?.relative.clone())
+        if let Some(scan) = &self.scan
+            && let Some(candidate) = self.selected.and_then(|n| scan.candidates.get(n))
+        {
+            return Some(candidate.relative.clone());
+        }
+        self.exe_fallback.clone()
     }
 
     /// Accepts a hand-picked exe, which must be inside the game folder — the
     /// copy only moves that folder, so an exe from anywhere else would be a
     /// catalog entry pointing at a file that never shipped.
-    pub fn setManualExe(&mut self, chosen: &Path) -> Result<(), String> {
+    pub fn setManualExe(&mut self, folder: &Path, chosen: &Path) -> Result<(), String> {
         let relative = chosen
-            .strip_prefix(&self.source)
-            .map_err(|_| format!("Pick an executable inside {}.", self.source.display()))?;
+            .strip_prefix(folder)
+            .map_err(|_| format!("Pick an executable inside {}.", folder.display()))?;
         self.manual_exe = Some(relative.to_path_buf());
         self.selected = None;
         Ok(())
@@ -121,8 +153,30 @@ impl Draft {
         self.image = Some(chosen);
     }
 
+    /// The app id as a number, or `None` while the field is empty or not one.
+    pub fn appidValue(&self) -> Option<u32> {
+        steam::parse(&self.appid)
+    }
+
+    /// Fills the app id from disk, leaving anything already in the field alone.
+    ///
+    /// Called on a click rather than every frame — it is only a couple of file
+    /// reads, but they are file reads.
+    pub fn detectAppid(&mut self, folder: &Path) {
+        if !self.appid.trim().is_empty() {
+            return;
+        }
+        if let Some((appid, found)) = steam::detect(folder, self.exeRelative().as_deref()) {
+            self.appid = appid.to_string();
+            self.appid_found = Some(found);
+        }
+    }
+
     /// What still has to be filled in, in one sentence, or `None` when ready.
-    pub fn blocker(&self) -> Option<String> {
+    ///
+    /// `cover_required` is false for a game already on the cartridge: it has a
+    /// cover, and leaving the picker alone keeps it.
+    pub fn blocker(&self, cover_required: bool) -> Option<String> {
         if self.scanning() {
             return Some("still being read".into());
         }
@@ -135,14 +189,130 @@ impl Draft {
                 _ => "needs an executable".into(),
             });
         }
-        if self.image.is_none() {
+        // With the box ticked and no id, the copy would put no steam_appid.txt
+        // on the cartridge and the game would fail its handshake there — so the
+        // id is a blocker exactly like the exe, not a warning.
+        if self.steam && self.appidValue().is_none() {
+            return Some(match self.appid.trim().is_empty() {
+                true => "needs a Steam app id".into(),
+                false => "has a Steam app id that isn't a number".into(),
+            });
+        }
+        if cover_required && self.image.is_none() {
             return Some("needs a cover image".into());
         }
         None
     }
+}
+
+/// One game on its way onto the cartridge.
+pub struct Draft {
+    pub source: PathBuf,
+    pub details: Details,
+}
+
+impl Draft {
+    fn new(ctx: &egui::Context, source: PathBuf) -> Draft {
+        Draft {
+            details: Details::new(ctx, &source, None),
+            source,
+        }
+    }
+
+    pub fn blocker(&self) -> Option<String> {
+        self.details.blocker(true)
+    }
 
     pub fn bytes(&self) -> u64 {
-        self.scan.as_ref().map(|s| s.total_bytes).unwrap_or(0)
+        self.details
+            .scan
+            .as_ref()
+            .map(|s| s.total_bytes)
+            .unwrap_or(0)
+    }
+}
+
+/// One game already on the cartridge, opened for changes.
+///
+/// Its files are where they are. The slug never moves — `name` and
+/// `games/<slug>/` are linked only at add time, and nothing afterwards reads
+/// the name to find the files — so even a rename is a catalog rewrite and
+/// nothing else. See `../TODO.md`.
+pub struct Edit {
+    /// The catalog row as the drive holds it now.
+    pub original: Entry,
+    /// `<root>/games/<slug>`, where its files already are.
+    pub dir: PathBuf,
+    pub slug: String,
+    /// Whether the row is expanded. Changes outlive being collapsed, so this is
+    /// only what is drawn.
+    pub open: bool,
+    /// The id found beside the exe when the row was opened, so the file is only
+    /// rewritten when something actually differs.
+    pub appid_original: String,
+    pub details: Details,
+}
+
+impl Edit {
+    /// Opens `entry` for editing, or `None` if its catalog paths don't name a
+    /// folder on this cartridge — the same containment check removal makes.
+    pub fn start(ctx: &egui::Context, root: &Path, entry: &Entry) -> Option<Edit> {
+        let dir = catalog::gameDir(root, entry)?;
+        let slug = catalog::slugOf(entry)?;
+        let mut details = Details::new(ctx, &dir, Some(catalog::exeRelative(entry)?));
+        details.name = entry.name.clone();
+        details.steam = entry.steam;
+        // Reads the steam_appid.txt already beside the exe, if there is one.
+        details.detectAppid(&dir);
+
+        Some(Edit {
+            appid_original: details.appid.clone(),
+            original: entry.clone(),
+            dir,
+            slug,
+            open: true,
+            details,
+        })
+    }
+
+    /// The catalog row this edit produces.
+    pub fn entry(&self) -> Entry {
+        Entry {
+            name: self.details.name.trim().to_string(),
+            exe: self
+                .details
+                .exeRelative()
+                .map(|relative| catalog::exePath(&self.slug, &relative))
+                .unwrap_or_else(|| self.original.exe.clone()),
+            image: match &self.details.image {
+                Some(source) => catalog::imagePath(&self.slug, source),
+                None => self.original.image.clone(),
+            },
+            steam: self.details.steam,
+        }
+    }
+
+    /// Whether `steam_appid.txt` has to be written again: the box was just
+    /// ticked, the id changed, or the exe moved to a different folder.
+    pub fn appidRewrite(&self) -> Option<u32> {
+        let appid = self.details.appidValue()?;
+        let moved = self.entry().exe != self.original.exe;
+        let changed = self.details.appid.trim() != self.appid_original.trim();
+        (self.details.steam && (!self.original.steam || changed || moved)).then_some(appid)
+    }
+
+    /// True when this edit would change anything on the cartridge.
+    ///
+    /// A replacement cover counts even when it lands on the same path — the
+    /// entry is identical, and the file is not.
+    pub fn changed(&self) -> bool {
+        self.entry() != self.original
+            || self.details.image.is_some()
+            || self.appidRewrite().is_some()
+    }
+
+    pub fn blocker(&self) -> Option<String> {
+        self.details.blocker(false)
     }
 }
 
@@ -161,6 +331,9 @@ pub struct App {
     /// Edit mode: what is already on the cartridge, and which of it to delete.
     pub existing: Vec<Entry>,
     pub remove: Vec<bool>,
+    /// Per-entry changes, `Some` once a row has been opened. Kept the same
+    /// length as `existing`.
+    pub edits: Vec<Option<Edit>>,
 
     /// Edit mode: set when the cartridge's launcher states a version other than
     /// `version::bundled()`. `None` covers "not a cartridge", "matches" and
@@ -172,6 +345,10 @@ pub struct App {
     pub drafts: Vec<Draft>,
     pub job: Option<Job>,
     pub outcome: Option<Result<Vec<String>, String>>,
+
+    /// The plan held back while its drive is being woken. `Some` only for the
+    /// moment the probe runs — see [`App::start`].
+    pending: Option<Plan>,
 
     /// Shown at the top of whatever screen is up, until dismissed.
     pub error: Option<String>,
@@ -195,10 +372,12 @@ impl App {
             name: String::new(),
             existing: Vec::new(),
             remove: Vec::new(),
+            edits: Vec::new(),
             staleLauncher: None,
             drafts: Vec::new(),
             job: None,
             outcome: None,
+            pending: None,
             error: None,
             listener_installs: listener::find(),
             listener_start_now: true,
@@ -260,6 +439,7 @@ impl App {
             match catalog::read(&root) {
                 Ok(entries) => {
                     self.remove = vec![false; entries.len()];
+                    self.edits = entries.iter().map(|_| None).collect();
                     self.existing = entries;
                     // Its signature already told us this when the drive was
                     // listed, so there is nothing to start and nothing to wait
@@ -290,6 +470,7 @@ impl App {
             self.mode = Mode::Create;
             self.existing.clear();
             self.remove.clear();
+            self.edits.clear();
             // Straight to the games screen. Creating a cartridge used to stop
             // here to choose a key; there is nothing left to ask.
             self.screen = Screen::Games;
@@ -320,14 +501,30 @@ impl App {
         self.drafts.push(Draft::new(ctx, folder));
     }
 
-    /// Catalog entries that survive this edit.
+    /// Catalog entries that survive this edit, with any changes applied.
+    ///
+    /// Built in catalog order rather than by appending the changed ones, so a
+    /// rename cannot reshuffle the cartridge's game list.
     pub fn keptEntries(&self) -> Vec<Entry> {
         self.existing
             .iter()
-            .zip(self.remove.iter().chain(std::iter::repeat(&false)))
-            .filter(|(_, remove)| !**remove)
-            .map(|(entry, _)| entry.clone())
+            .enumerate()
+            .filter(|(index, _)| !self.remove.get(*index).copied().unwrap_or(false))
+            .map(|(index, entry)| match self.edits.get(index) {
+                Some(Some(edit)) => edit.entry(),
+                _ => entry.clone(),
+            })
             .collect()
+    }
+
+    /// The open edits that would actually change something, with their index.
+    fn liveEdits(&self) -> impl Iterator<Item = &Edit> {
+        self.edits
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !self.remove.get(*index).copied().unwrap_or(false))
+            .filter_map(|(_, edit)| edit.as_ref())
+            .filter(|edit| edit.changed())
     }
 
     pub fn removedEntries(&self) -> Vec<Entry> {
@@ -357,7 +554,18 @@ impl App {
         }
         for draft in &self.drafts {
             if let Some(blocker) = draft.blocker() {
-                return Err(format!("{} {blocker}.", draft.name));
+                return Err(format!("{} {blocker}.", draft.details.name));
+            }
+        }
+        // A game on its way off the cartridge is exempt: whatever its row says,
+        // nothing is going to be written from it.
+        for (index, edit) in self.edits.iter().enumerate() {
+            let Some(edit) = edit else { continue };
+            if self.remove.get(index).copied().unwrap_or(false) {
+                continue;
+            }
+            if let Some(blocker) = edit.blocker() {
+                return Err(format!("{} {blocker}.", edit.original.name));
             }
         }
 
@@ -373,12 +581,27 @@ impl App {
             .drafts
             .iter()
             .map(|draft| PlannedGame {
-                slug: catalog::uniqueSlug(&draft.name, &mut taken),
+                slug: catalog::uniqueSlug(&draft.details.name, &mut taken),
                 source: draft.source.clone(),
-                name: draft.name.trim().to_string(),
-                exeRelative: draft.exeRelative().expect("checked by blocker above"),
-                image: draft.image.clone().expect("checked by blocker above"),
+                name: draft.details.name.trim().to_string(),
+                exeRelative: draft
+                    .details
+                    .exeRelative()
+                    .expect("checked by blocker above"),
+                image: draft
+                    .details
+                    .image
+                    .clone()
+                    .expect("checked by blocker above"),
                 bytes: draft.bytes(),
+                steam: draft.details.steam,
+                // Gated on the tick: an id left behind by a box the user then
+                // unticked must not put a file on the cartridge.
+                appid: draft
+                    .details
+                    .steam
+                    .then(|| draft.details.appidValue())
+                    .flatten(),
             })
             .collect();
 
@@ -387,8 +610,70 @@ impl App {
             keep,
             remove: self.removedEntries(),
             add,
+            edit: self.editedGames(&volume.root),
             label: (name != volume.label).then(|| name.to_string()),
         })
+    }
+
+    /// The file-level work each changed game needs, with every path already
+    /// resolved — `apply` should not have to work any of it out again.
+    ///
+    /// A rename produces one of these with nothing in it. That is the point:
+    /// its presence is what tells the plan the catalog has to be rewritten, and
+    /// what puts the game on the Review screen.
+    fn editedGames(&self, root: &Path) -> Vec<EditedGame> {
+        self.liveEdits()
+            .map(|edit| {
+                let entry = edit.entry();
+                let mut changes = Vec::new();
+                if entry.name != edit.original.name {
+                    changes.push(format!("renamed to {}", entry.name));
+                }
+                if entry.exe != edit.original.exe {
+                    changes.push(format!("starts {}", entry.exe));
+                }
+                if entry.steam != edit.original.steam {
+                    changes.push(match entry.steam {
+                        true => "needs Steam".into(),
+                        false => "no longer needs Steam".into(),
+                    });
+                }
+
+                // The cover goes wherever its new extension says, which is not
+                // always where the old one sat — an older cartridge spells the
+                // folder `images/`, and a jpg replacing a png moves it too.
+                let cover = edit.details.image.as_ref().map(|source| {
+                    changes.push("new cover".into());
+                    (
+                        source.clone(),
+                        root.join(catalog::imagePath(&edit.slug, source)),
+                    )
+                });
+                let stale_cover = cover.as_ref().and_then(|(_, destination)| {
+                    catalog::imageFile(root, &edit.original).filter(|old| old != destination)
+                });
+
+                let appid = edit.appidRewrite().map(|appid| {
+                    if !changes.iter().any(|c| c.starts_with("needs Steam")) {
+                        changes.push(format!("Steam app id {appid}"));
+                    }
+                    let relative = edit
+                        .details
+                        .exeRelative()
+                        .unwrap_or_else(|| PathBuf::from(&entry.exe));
+                    (steam::appidFileIn(&edit.dir, &relative), appid)
+                });
+
+                EditedGame {
+                    name: entry.name,
+                    slug: edit.slug.clone(),
+                    changes,
+                    cover,
+                    stale_cover,
+                    appid,
+                }
+            })
+            .collect()
     }
 
     /// Free space, minus what the plan needs — negative when it won't fit.
@@ -398,9 +683,29 @@ impl App {
         (needed > free).then(|| needed - free)
     }
 
+    /// Wakes the drive, and starts the write only if it answers.
+    ///
+    /// Two stages rather than one check inside `cartridge::apply`, because a
+    /// drive that does not answer must not land on the Done screen: Done's only
+    /// way out is Finish, which resets the wizard and throws away a game list
+    /// that took minutes to assemble.
     pub fn start(&mut self, ctx: &egui::Context, plan: Plan) {
+        let root = plan.root.clone();
+        self.error = None;
+        self.pending = Some(plan);
+        self.job = Some(
+            Job::spawn(ctx, "Waking the cartridge", move |_cancel, report| {
+                wake::probe(&root, report).map(|()| Vec::new())
+            })
+            .uncancellable(),
+        );
+        self.screen = Screen::Working;
+    }
+
+    fn startWrite(&mut self, ctx: &egui::Context, plan: Plan) {
         let games = plan.add.len();
         let removed = plan.remove.len();
+        let changed = plan.edit.len();
         let renamed = plan.label.clone();
         self.job = Some(Job::spawn(
             ctx,
@@ -413,6 +718,9 @@ impl App {
                     }
                     if removed > 0 {
                         done.push(format!("Removed {removed} game(s)"));
+                    }
+                    if changed > 0 {
+                        done.push(format!("Updated {changed} game(s) already there"));
                     }
                     done.push("Wrote launcher.exe and catalog.json".into());
                     // The rename is reported whichever way it went: silently
@@ -437,7 +745,7 @@ impl App {
     pub fn installListener(&mut self, ctx: &egui::Context) {
         let start_now = self.listener_start_now;
         let suppress_autoplay = self.suppress_autoplay;
-        self.startListenerJob(ctx, "Installing the listener", move || {
+        self.startListenerJob(ctx, "Installing the listener", move |_report| {
             listener::install(start_now, suppress_autoplay)
         });
     }
@@ -445,7 +753,7 @@ impl App {
     /// Removes the listener at `dir` — which is the one in
     /// `listener::installDir()`, or a folder an earlier build used.
     pub fn uninstallListener(&mut self, ctx: &egui::Context, dir: PathBuf) {
-        self.startListenerJob(ctx, "Removing the listener", move || {
+        self.startListenerJob(ctx, "Removing the listener", move |_report| {
             listener::uninstall(&dir)
         });
     }
@@ -455,7 +763,9 @@ impl App {
     /// outcome in the program the same way.
     fn startListenerJob<F>(&mut self, ctx: &egui::Context, title: &str, task: F)
     where
-        F: FnOnce() -> Result<Vec<String>, String> + Send + 'static,
+        F: FnOnce(&mut dyn FnMut(cartridge::Progress)) -> Result<Vec<String>, String>
+            + Send
+            + 'static,
     {
         self.job = Some(
             Job::spawn(ctx, title, move |_cancel, report| {
@@ -464,7 +774,7 @@ impl App {
                     total: 1,
                     label: "Working…".into(),
                 });
-                task()
+                task(report)
             })
             .uncancellable(),
         );
@@ -480,24 +790,48 @@ impl App {
         let Some(root) = self.volume().map(|v| v.root.clone()) else {
             return;
         };
-        self.startListenerJob(ctx, "Updating the launcher", move || {
+        self.startListenerJob(ctx, "Updating the launcher", move |report| {
+            // The same gate as a full write, for the same reason: this one goes
+            // straight at the drive. A failure here can land on Done, though —
+            // there is no game list to lose.
+            wake::probe(&root, report)?;
             let bytes = payload::launcher()?;
             copy::bytes(&root.join(cartridge::LAUNCHER_NAME), &bytes).map_err(|e| e.message())?;
             Ok(vec!["Updated launcher.exe".into()])
         });
     }
 
-    /// Moves a finished job onto the Done screen.
-    pub fn pollJob(&mut self) {
+    /// Moves a finished job on: the wake-up into the write it was gating,
+    /// anything else onto the Done screen.
+    pub fn pollJob(&mut self, ctx: &egui::Context) {
         let Some(job) = &mut self.job else { return };
         job.poll();
-        if job.finished() {
-            let job = self.job.take().expect("just checked");
-            self.outcome = job.outcome;
-            self.screen = Screen::Done;
-            self.refreshVolumes();
-            self.refreshListeners();
+        if !job.finished() {
+            return;
         }
+        let outcome = self.job.take().expect("just checked").outcome;
+
+        if let Some(plan) = self.pending.take() {
+            match outcome {
+                Some(Ok(_)) => self.startWrite(ctx, plan),
+                // Back to Review, not Done. The drafts were never touched and
+                // `plan()` rebuilds from them, so plugging the drive back in
+                // and pressing Write again is the whole recovery.
+                problem => {
+                    self.error = Some(match problem {
+                        Some(Err(reason)) => reason,
+                        _ => "The cartridge could not be woken.".into(),
+                    });
+                    self.screen = Screen::Review;
+                }
+            }
+            return;
+        }
+
+        self.outcome = outcome;
+        self.screen = Screen::Done;
+        self.refreshVolumes();
+        self.refreshListeners();
     }
 
     /// Back to the start, keeping nothing but the volume list.

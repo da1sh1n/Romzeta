@@ -227,8 +227,9 @@ impl Shell {
         for command in std::mem::take(&mut output.platform_output.commands) {
             match command {
                 egui::OutputCommand::CopyText(text) => copy(&text),
-                // Nothing in this program copies an image or opens a link.
-                egui::OutputCommand::CopyImage(_) | egui::OutputCommand::OpenUrl(_) => {}
+                egui::OutputCommand::OpenUrl(url) => openUrl(&url.url),
+                // Nothing in this program copies an image.
+                egui::OutputCommand::CopyImage(_) => {}
             }
         }
 
@@ -321,6 +322,34 @@ fn copy(text: &str) {
     crate::clipboard::set(text);
 }
 
+/// Hands a link to whatever the desktop opens links with.
+///
+/// `https` only. Every URL in this program is a constant in its own source, so
+/// the check costs nothing — but a shell verb is not the place to be relaxed
+/// about what it is handed.
+#[cfg(windows)]
+fn openUrl(url: &str) {
+    use std::ptr;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    if !url.starts_with("https://") {
+        return;
+    }
+    let verb = common::utf16::wide("open");
+    let target = common::utf16::wide(url);
+    unsafe {
+        ShellExecuteW(
+            ptr::null_mut(),
+            verb.as_ptr(),
+            target.as_ptr(),
+            ptr::null(),
+            ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+}
+
 // The installer only really runs on Windows; the other targets exist so the
 // non-UI half can be built and tested there. Same reasoning as font.rs.
 #[cfg(not(windows))]
@@ -330,6 +359,9 @@ fn paste() -> Option<String> {
 
 #[cfg(not(windows))]
 fn copy(_text: &str) {}
+
+#[cfg(not(windows))]
+fn openUrl(_url: &str) {}
 
 /// The window, its GL context, and the surface the two share.
 ///

@@ -14,8 +14,12 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-/// The shape the launcher's covers are cut to.
-const TARGET_RATIO: f64 = 600.0 / 900.0;
+/// The size the launcher's covers are laid out at, and the shape that follows
+/// from it. Quoted to the user by both the hint beside the picker and the
+/// warning below, so it is stated once here.
+pub const TARGET_WIDTH: u32 = 600;
+pub const TARGET_HEIGHT: u32 = 900;
+const TARGET_RATIO: f64 = TARGET_WIDTH as f64 / TARGET_HEIGHT as f64;
 
 /// How far off 2:3 a cover may be before it is worth mentioning. A percent or
 /// two is rounding in whatever tool produced the file.
@@ -47,8 +51,9 @@ pub fn ratioWarning(path: &Path) -> Option<String> {
     let ratio = width as f64 / height as f64;
     ((ratio - TARGET_RATIO).abs() > TARGET_RATIO * RATIO_TOLERANCE).then(|| {
         format!(
-            "{width}×{height} is not the 2:3 shape the launcher lays out (600×900). \
-             It will still be shown, at a different size to the others."
+            "{width}×{height} is not the 2:3 shape the launcher lays out \
+             ({TARGET_WIDTH}×{TARGET_HEIGHT}). It will still be shown, at a different \
+             size to the others."
         )
     })
 }

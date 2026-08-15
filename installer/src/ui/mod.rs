@@ -15,6 +15,7 @@ mod listener;
 
 use crate::app::{App, Mode, Screen};
 use crate::cartridge;
+use crate::catalog::{self, Entry};
 use crate::payload;
 use crate::volume::humanBytes;
 
@@ -41,9 +42,12 @@ impl App {
     /// One frame. Called by [`crate::shell`] with the whole window to draw into.
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        self.pollJob();
+        self.pollJob(&ctx);
         for draft in &mut self.drafts {
-            draft.poll();
+            draft.details.poll();
+        }
+        for edit in self.edits.iter_mut().flatten() {
+            edit.details.poll();
         }
 
         egui::Panel::top("header").show(ui, |ui| header(self, ui));
@@ -346,9 +350,30 @@ fn review(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(10.0);
     }
 
-    if !plan.keep.is_empty() {
+    if !plan.edit.is_empty() {
+        ui.label(egui::RichText::new("Change").strong());
+        for game in &plan.edit {
+            ui.label(format!("  ~ {} — {}", game.name, game.changes.join(", ")));
+        }
+        ui.label(egui::RichText::new("  no game folder is copied again for these").weak());
+        ui.add_space(10.0);
+    }
+
+    // Everything staying, minus the ones the section above already accounted
+    // for — a game cannot be both changed and untouched. Matched on the slug,
+    // not the name: the name is what may just have been edited, and two games
+    // are allowed to share one.
+    let changed: Vec<&str> = plan.edit.iter().map(|game| game.slug.as_str()).collect();
+    let untouched: Vec<&Entry> = plan
+        .keep
+        .iter()
+        .filter(|entry| {
+            !catalog::slugOf(entry).is_some_and(|slug| changed.contains(&slug.as_str()))
+        })
+        .collect();
+    if !untouched.is_empty() {
         ui.label(egui::RichText::new("Already there, untouched").strong());
-        for entry in &plan.keep {
+        for entry in untouched {
             ui.label(format!("  · {}", entry.name));
         }
         ui.add_space(10.0);

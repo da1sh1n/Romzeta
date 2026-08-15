@@ -28,9 +28,11 @@ mod image;
 mod listener;
 mod payload;
 mod shell;
+mod steam;
 mod ui;
 mod version;
 mod volume;
+mod wake;
 mod work;
 
 #[cfg(test)]

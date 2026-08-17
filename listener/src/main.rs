@@ -46,6 +46,10 @@ enum Mode {
 }
 
 fn main() {
+    // Before anything else, so Task Manager groups this process under the same
+    // "Romzeta" entry as the launcher, keeper and installer.
+    common::aumid::set();
+
     // The two printing modes are answered before anything touches the disk:
     // creating folders or refreshing an exe as a side effect of being asked a
     // question would be surprising, and on a cartridge it would be a write to
@@ -156,6 +160,20 @@ fn refreshDeployedExe(base: &Path) {
     let Ok(exe) = env::current_exe() else {
         return;
     };
+    // Test binaries are named like `listener-<hash>.exe`; copying them into
+    // output would replace a signed deployed binary with an unsigned test one.
+    let expected_name = if cfg!(windows) {
+        "listener.exe"
+    } else {
+        "listener"
+    };
+    if exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_none_or(|name| !name.eq_ignore_ascii_case(expected_name))
+    {
+        return;
+    }
     let deployed = base.join(if cfg!(windows) {
         "listener.exe"
     } else {

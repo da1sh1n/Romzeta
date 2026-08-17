@@ -15,9 +15,34 @@
 
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::log::Log;
 use crate::{alert, trust, version};
+
+const PROCESS_CHECK_INTERVAL_MS: u64 = 10_000;
+
+struct GateState {
+    last_check: Option<Instant>,
+    active: bool,
+    pid: Option<u32>,
+}
+
+impl GateState {
+    fn new() -> Self {
+        Self {
+            last_check: None,
+            active: false,
+            pid: None,
+        }
+    }
+}
+
+fn gateState() -> &'static Mutex<GateState> {
+    static STATE: OnceLock<Mutex<GateState>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(GateState::new()))
+}
 
 /// What became of one volume. Returned as well as logged, because the Windows
 /// trigger debounces on it.
@@ -37,6 +62,10 @@ pub enum Outcome {
 /// Every path out logs its reason first — with no console and, on Windows, no
 /// window, the log is the only way to answer "why didn't it start?".
 pub fn handleVolume(root: &Path, log: &Log) -> Outcome {
+    if shouldSuppressGlobalLaunch(log) {
+        return Outcome::Ignored;
+    }
+
     let launcher = match trust::verifyLauncher(root) {
         Ok(launcher) => launcher,
         Err(reason) => {
@@ -121,4 +150,53 @@ pub fn handleVolume(root: &Path, log: &Log) -> Outcome {
             Outcome::Failed
         }
     }
+}
+
+fn shouldSuppressGlobalLaunch(log: &Log) -> bool {
+    let mut state = gateState().lock().expect("global lease gate mutex poisoned");
+    let now = Instant::now();
+    let check_every = Duration::from_millis(PROCESS_CHECK_INTERVAL_MS);
+
+    if let Some(last_check) = state.last_check
+        && now.duration_since(last_check) < check_every
+    {
+        if state.active
+            && let Some(pid) = state.pid
+        {
+            log.line(&format!(
+                "launch suppressed: active global lease pid {pid} (cached under {}ms)",
+                PROCESS_CHECK_INTERVAL_MS
+            ));
+        }
+        return state.active;
+    }
+
+    state.last_check = Some(now);
+    let Some(lease) = common::lease::readLease() else {
+        state.active = false;
+        state.pid = None;
+        return false;
+    };
+
+    if common::lease::processExists(lease.pid) {
+        state.active = true;
+        state.pid = Some(lease.pid);
+        log.line(&format!(
+            "launch suppressed: active global lease pid {} (checked)",
+            lease.pid
+        ));
+        return true;
+    }
+
+    state.active = false;
+    state.pid = None;
+    if let Err(error) = common::lease::clearLease() {
+        log.line(&format!("failed clearing stale global lease: {error}"));
+    } else {
+        log.line(&format!(
+            "cleared stale global lease for pid {} after existence check",
+            lease.pid
+        ));
+    }
+    false
 }

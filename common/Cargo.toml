@@ -21,4 +21,7 @@ windows-sys = { version = "0.61.2", features = [
     # pass null), and windows-sys gates the whole binding on this feature.
     "Win32_Security",
     "Win32_System_Registry",
+    "Win32_System_Threading",
+    # SetCurrentProcessExplicitAppUserModelID, for src/aumid.rs.
+    "Win32_UI_Shell",
 ] }

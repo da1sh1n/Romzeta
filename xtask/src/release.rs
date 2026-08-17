@@ -4,8 +4,9 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Runs the release sequence: build launcher and listener, sign them, build the
-//! installer around those signed bytes, sign it, then verify all three.
+//! Runs the release sequence: build launcher, listener and keeper, sign them,
+//! build the installer around the signed launcher and listener, sign it, then
+//! verify all four.
 
 // ########## THE RELEASE SEQUENCE ##########
 
@@ -38,15 +39,18 @@ pub fn run(root: &Path) -> Result<(), String> {
     let key = keys::secretKey(root)?;
     let release = root.join("target").join("release");
 
-    println!("== building launcher and listener");
+    println!("== building launcher, listener and keeper");
     cargo(
         root,
-        &["build", "--release", "-p", "launcher", "-p", "listener"],
+        &[
+            "build", "--release", "-p", "launcher", "-p", "listener", "-p", "keeper",
+        ],
     )?;
 
     println!("== signing them");
     let launcher = release.join(exe("launcher"));
     let listener = release.join(exe("listener"));
+    let keeper = release.join(exe("keeper"));
     sign::sign(
         &launcher,
         &key,
@@ -56,6 +60,11 @@ pub fn run(root: &Path) -> Result<(), String> {
         &listener,
         &key,
         &format!("romzeta-listener {}", version("listener")),
+    )?;
+    sign::sign(
+        &keeper,
+        &key,
+        &format!("romzeta-keeper {}", version("keeper")),
     )?;
 
     // Deliberately after signing, and deliberately a separate cargo invocation:
@@ -74,9 +83,9 @@ pub fn run(root: &Path) -> Result<(), String> {
     )?;
 
     println!();
-    println!("project version {project_version} — these three are compatible with each other:");
+    println!("project version {project_version} — these four are compatible with each other:");
     let anchors = keys::anchors(root);
-    for path in [&launcher, &listener, &installer] {
+    for path in [&launcher, &listener, &keeper, &installer] {
         // Verifying what we just signed is not ceremony. It is the only thing
         // that proves the secret key in use actually corresponds to a public key
         // baked into the listener we just built — if it does not, every cartridge

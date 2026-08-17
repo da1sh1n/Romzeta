@@ -1,0 +1,23 @@
+[package]
+name = "keeper"
+version = "0.3.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+# The lease/process-liveness helpers and the AppUserModelID call — the same
+# crate the launcher, listener and installer link, so all four agree on both.
+[dependencies]
+common = { path = "../common" }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+# The hidden window that gives Task Manager/the taskbar something to hang the
+# AUMID identity on — see src/window.rs.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader", # GetModuleHandleW
+    "Win32_System_Threading",     # GetCurrentThreadId
+    "Win32_UI_WindowsAndMessaging",
+] }

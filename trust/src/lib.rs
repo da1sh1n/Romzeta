@@ -43,6 +43,7 @@ impl Anchor<'_> {
 pub const LAUNCHER_ROLE: &str = "romzeta-launcher";
 pub const LISTENER_ROLE: &str = "romzeta-listener";
 pub const INSTALLER_ROLE: &str = "romzeta-installer";
+pub const KEEPER_ROLE: &str = "romzeta-keeper";
 
 // ========== The Two Outcomes ==========
 

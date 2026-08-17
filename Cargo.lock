@@ -1591,7 +1591,7 @@ dependencies = [
 
 [[package]]
 name = "installer"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "common",
  "egui",
@@ -1607,6 +1607,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "trust",
  "windows-sys 0.61.2",
+ "winres",
 ]
 
 [[package]]
@@ -1743,6 +1744,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keeper"
+version = "0.3.0"
+dependencies = [
+ "common",
+ "windows-sys 0.61.2",
+ "winres",
+]
+
+[[package]]
 name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1762,7 +1772,7 @@ dependencies = [
 
 [[package]]
 name = "launcher"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "common",
  "rust-embed",
@@ -1773,6 +1783,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "toml_edit 0.25.13+spec-1.1.0",
  "windows-sys 0.61.2",
+ "winres",
  "wry",
 ]
 

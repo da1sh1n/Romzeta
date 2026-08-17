@@ -1,6 +1,6 @@
 [package]
 name = "installer"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -97,6 +97,11 @@ flate2 = { version = "1.1.9", default-features = false, features = ["rust_backen
 # Reading the bundled launcher's version straight from ../launcher/Cargo.toml — its
 # [package].version is the source of truth, not anything the built exe reports.
 toml = "1.1.4"
+
+[target.'cfg(windows)'.build-dependencies]
+# Embedding FileDescription/ProductName so Task Manager shows "Romzeta
+# Installer". Same crate and version the listener already uses in its build.rs.
+winres = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 # Nothing here elevates. The listener installs into %LOCALAPPDATA%\Romzeta and a

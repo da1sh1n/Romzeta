@@ -5,12 +5,14 @@
 // or <https://www.gnu.org/licenses/> for details.
 
 //! Writes a plan onto a volume: removals first, then game folders, covers,
-//! `catalog.json`, `config.toml`, `launcher.exe`, and the drive's label last.
-//! Unwinds what it created if a step fails or the user cancels.
+//! `catalog.json`, `config.toml`, `launcher.exe`, `keeper.exe`, and the
+//! drive's label last. Unwinds what it created if a step fails or the user
+//! cancels.
 //!
 //! ```text
 //! <volume>/
 //!   launcher.exe     <- the app, from the embedded payload
+//!   keeper.exe       <- its detached keepalive worker, from the same payload
 //!   config.toml      <- look and feel only
 //!   catalog.json     <- the game list this plan describes
 //!   images/          <- one cover per game
@@ -36,6 +38,11 @@ pub const CONFIG_FILE: &str = "config.toml";
 /// explains why letting the cartridge name its own binary was a liability
 /// rather than a feature.
 pub const LAUNCHER_NAME: &str = "launcher.exe";
+
+/// The launcher's detached keepalive worker, written beside it on the same
+/// cartridge — `keeper::spawn` finds it by looking next to whichever
+/// `launcher.exe` is currently running.
+pub const KEEPER_NAME: &str = "keeper.exe";
 
 /// Headroom demanded on top of the measured bytes before a copy is offered.
 ///
@@ -132,9 +139,9 @@ impl Plan {
     /// copy simply proceeds with the room they freed, and if this passes without
     /// them the answer was never in doubt.
     pub fn requiredBytes(&self) -> u64 {
-        // The size the launcher unpacks to, not the size it is carried at — what
-        // lands on the drive is the whole exe.
-        self.bytesToCopy() + payload::LAUNCHER_BYTES + FREE_SPACE_SLACK
+        // The size the launcher and keeper unpack to, not the size they are
+        // carried at — what lands on the drive is the whole exe, for both.
+        self.bytesToCopy() + payload::LAUNCHER_BYTES + payload::KEEPER_BYTES + FREE_SPACE_SLACK
     }
 
     /// True when this plan would change nothing.
@@ -312,6 +319,16 @@ pub fn apply(
         Err(problem) => return Err(unwind(&created, problem)),
     };
     if let Err(e) = copy::bytes(&root.join(LAUNCHER_NAME), &launcher) {
+        return Err(unwind(&created, e.message()));
+    }
+
+    // The keeper travels with the launcher: refreshed on the same schedule, so
+    // a cartridge edited by a new installer always has the two in step.
+    let keeper = match payload::keeper() {
+        Ok(bytes) => bytes,
+        Err(problem) => return Err(unwind(&created, problem)),
+    };
+    if let Err(e) = copy::bytes(&root.join(KEEPER_NAME), &keeper) {
         return Err(unwind(&created, e.message()));
     }
 

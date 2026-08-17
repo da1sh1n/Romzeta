@@ -27,6 +27,17 @@ use crate::volume::{self, Volume};
 use crate::wake;
 use crate::work::{Job, Scanning};
 
+/// Why the games screen would offer to refresh `keeper.exe` — see
+/// `App::staleKeeper`.
+#[derive(Clone, Copy)]
+pub enum KeeperState {
+    /// A cartridge from before keeper existed: a launcher, but no keeper.exe.
+    Missing,
+    /// A keeper.exe is there, but states a version other than
+    /// `version::bundledKeeper()`.
+    Stale(Version),
+}
+
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Screen {
     Home,
@@ -341,6 +352,9 @@ pub struct App {
     /// update. Read off the verified signature when the volume was picked, so
     /// there is no pending state and nothing to poll.
     pub staleLauncher: Option<Version>,
+    /// The keeper counterpart to `staleLauncher` — also covers a
+    /// launcher-carrying cartridge that predates keeper and has none at all.
+    pub staleKeeper: Option<KeeperState>,
 
     pub drafts: Vec<Draft>,
     pub job: Option<Job>,
@@ -374,6 +388,7 @@ impl App {
             remove: Vec::new(),
             edits: Vec::new(),
             staleLauncher: None,
+            staleKeeper: None,
             drafts: Vec::new(),
             job: None,
             outcome: None,
@@ -410,6 +425,7 @@ impl App {
         self.drafts.clear();
         self.error = None;
         self.staleLauncher = None;
+        self.staleKeeper = None;
 
         let Some(volume) = self.volumes.get(index) else {
             return;
@@ -455,6 +471,19 @@ impl App {
                         (Some(theirs), Some(ours)) if theirs != ours => Some(theirs),
                         _ => None,
                     };
+                    // Same question for the keeper, plus one launcher_version
+                    // doesn't have to ask: a launcher-carrying cartridge can
+                    // simply predate keeper and have no file to attest at all.
+                    // Only offered when this build actually carries one —
+                    // `bundledKeeper()` is `None` under the payload-optional
+                    // escape hatch, and there is nothing to install then.
+                    self.staleKeeper = version::bundledKeeper().and_then(|ours| {
+                        match volume.keeper_version.as_deref().and_then(version::parse) {
+                            Some(theirs) if theirs != ours => Some(KeeperState::Stale(theirs)),
+                            Some(_) => None,
+                            None => Some(KeeperState::Missing),
+                        }
+                    });
                 }
                 Err(e) => {
                     // Refusing here is the point: writing a new catalog over one
@@ -798,6 +827,22 @@ impl App {
             let bytes = payload::launcher()?;
             copy::bytes(&root.join(cartridge::LAUNCHER_NAME), &bytes).map_err(|e| e.message())?;
             Ok(vec!["Updated launcher.exe".into()])
+        });
+    }
+
+    /// Rewrites just `keeper.exe` on the current cartridge — the keeper
+    /// counterpart to [`Self::updateLauncher`], for the same reason: an empty
+    /// plan cannot reach Review, so a cartridge whose games are already
+    /// correct still needs a route to a fresh keeper.
+    pub fn updateKeeper(&mut self, ctx: &egui::Context) {
+        let Some(root) = self.volume().map(|v| v.root.clone()) else {
+            return;
+        };
+        self.startListenerJob(ctx, "Updating the keeper", move |report| {
+            wake::probe(&root, report)?;
+            let bytes = payload::keeper()?;
+            copy::bytes(&root.join(cartridge::KEEPER_NAME), &bytes).map_err(|e| e.message())?;
+            Ok(vec!["Updated keeper.exe".into()])
         });
     }
 

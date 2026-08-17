@@ -24,6 +24,12 @@ pub fn bundled() -> Option<Version> {
     parse(payload::LAUNCHER_VERSION)
 }
 
+/// The version of the keeper this installer carries — same rule as
+/// [`bundled`], read from `../keeper/Cargo.toml` rather than the built exe.
+pub fn bundledKeeper() -> Option<Version> {
+    parse(payload::KEEPER_VERSION)
+}
+
 /// Answers `--version` / `--signature` / `--help` if any were passed. `true`
 /// means the program has said its piece and should exit now.
 ///

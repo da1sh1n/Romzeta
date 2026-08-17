@@ -51,7 +51,7 @@ fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let release = releaseDir(&out_dir, &manifest);
 
-    // The two binaries, then the three seed files. Seeds come from the source
+    // The three binaries, then the two seed files. Seeds come from the source
     // tree, so they are always present and always current — the binaries are the
     // only part with a build-order requirement.
     let binaries = [
@@ -74,6 +74,16 @@ fn main() {
                 role: trust::LISTENER_ROLE,
             },
             release.join(exeName("listener")),
+        ),
+        (
+            Item {
+                staged: "keeper.exe.z",
+                size_const: "KEEPER_BYTES",
+                env_override: "ROMZETA_KEEPER_EXE",
+                remedy: "cargo build --release -p keeper",
+                role: trust::KEEPER_ROLE,
+            },
+            release.join(exeName("keeper")),
         ),
     ];
 
@@ -155,37 +165,60 @@ fn main() {
         );
     }
 
-    stageLauncherVersion(&out_dir, &manifest);
+    stageVersions(&out_dir, &manifest);
     stageTrustAnchors(&out_dir, &manifest);
+    embedResources();
 }
 
-/// Writes `LAUNCHER_VERSION`, read from `../launcher/Cargo.toml`'s `[package].version`
-/// — not from the built exe. That manifest field is the one place the launcher's
-/// version is declared, so it is the only place the installer should read it from.
+// ========== Embedding Version Info ==========
+
+/// Sets FileDescription/ProductName so Task Manager shows "Romzeta Installer"
+/// instead of the bare filename.
+#[cfg(windows)]
+fn embedResources() {
+    let mut res = winres::WindowsResource::new();
+    res.set("FileDescription", "Romzeta Installer");
+    res.set("ProductName", "Romzeta");
+    res.compile()
+        .expect("compile Windows resources (version info)");
+}
+
+#[cfg(not(windows))]
+fn embedResources() {}
+
+/// Writes `LAUNCHER_VERSION` and `KEEPER_VERSION`, each read from that crate's
+/// own `Cargo.toml`'s `[package].version` — not from the built exe. That
+/// manifest field is the one place a crate's version is declared, so it is the
+/// only place the installer should read it from.
 ///
 /// Unlike the binary payload above, there is no escape hatch here: this reads
 /// source, not a build artifact, so a missing or malformed manifest means the repo
 /// itself is broken and the build should fail loudly rather than stage a fallback.
-fn stageLauncherVersion(out_dir: &Path, manifest: &Path) {
-    let path = manifest.join("../launcher/Cargo.toml");
-    println!("cargo::rerun-if-changed={}", path.display());
+fn stageVersions(out_dir: &Path, manifest: &Path) {
+    for (crate_name, const_name, file_name) in [
+        ("launcher", "LAUNCHER_VERSION", "launcher-version.rs"),
+        ("keeper", "KEEPER_VERSION", "keeper-version.rs"),
+    ] {
+        let path = manifest.join(format!("../{crate_name}/Cargo.toml"));
+        println!("cargo::rerun-if-changed={}", path.display());
 
-    let text = fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
-    let table: toml::Table = text
-        .parse()
-        .unwrap_or_else(|e| panic!("{} is not valid TOML: {e}", path.display()));
-    let version = table
-        .get("package")
-        .and_then(|v| v.get("version"))
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("{} has no [package].version", path.display()));
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
+        let table: toml::Table = text
+            .parse()
+            .unwrap_or_else(|e| panic!("{} is not valid TOML: {e}", path.display()));
+        let version = table
+            .get("package")
+            .and_then(|v| v.get("version"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("{} has no [package].version", path.display()));
 
-    fs::write(
-        out_dir.join("launcher-version.rs"),
-        format!("pub const LAUNCHER_VERSION: &str = {version:?};\n"),
-    )
-    .expect("write the bundled launcher's version");
+        fs::write(
+            out_dir.join(file_name),
+            format!("pub const {const_name}: &str = {version:?};\n"),
+        )
+        .unwrap_or_else(|e| panic!("failed to write {file_name}: {e}"));
+    }
 }
 
 /// The `--release` output folder holding `launcher.exe` and `listener.exe`.

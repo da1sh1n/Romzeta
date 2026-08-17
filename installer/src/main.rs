@@ -39,6 +39,10 @@ mod work;
 mod tests;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Before anything else, so Task Manager groups this process under the same
+    // "Romzeta" entry as the launcher, listener and keeper.
+    common::aumid::set();
+
     // Before the window, before anything. Same rule as the other two: being
     // asked a question is not a reason to start doing work.
     if version::handled() {

@@ -49,6 +49,22 @@ pub fn attestedLauncher(root: &Path) -> Option<String> {
         .map(|attested| attested.version)
 }
 
+/// The version of `<root>/keeper.exe`, on the same terms as
+/// [`attestedLauncher`] — `None` covers no file, unsigned, a stranger's key,
+/// or a genuine Romzeta binary that isn't a keeper. A cartridge written before
+/// keeper existed simply has no file here, which is `None` like every other
+/// case: the caller decides what that means.
+pub fn attestedKeeper(root: &Path) -> Option<String> {
+    let path = root.join(crate::cartridge::KEEPER_NAME);
+    if !path.is_file() {
+        return None;
+    }
+    let bytes = std::fs::read(&path).ok()?;
+    trust::attest(&bytes, ANCHORS, trust::KEEPER_ROLE)
+        .ok()
+        .map(|attested| attested.version)
+}
+
 /// Whether a drive may be written to, and if not, why not.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Eligibility {
@@ -104,6 +120,12 @@ pub struct Volume {
     /// from the signed comment, never by running the file — see
     /// `../version.rs`.
     pub launcher_version: Option<String>,
+
+    /// The keeper version its signature states, on the same terms as
+    /// `launcher_version`. `None` also covers a cartridge that predates
+    /// keeper and simply has no `keeper.exe` at all — `app.rs` is where that
+    /// gets told apart from "up to date".
+    pub keeper_version: Option<String>,
 }
 
 impl Volume {
@@ -350,6 +372,7 @@ mod platform {
 
         let (label, fs) = volumeInfo(&wide_root);
         let launcher_version = super::attestedLauncher(&root);
+        let keeper_version = super::attestedKeeper(&root);
         Some(Volume {
             label,
             fs,
@@ -359,6 +382,7 @@ mod platform {
             total_bytes,
             is_cartridge: launcher_version.is_some(),
             launcher_version,
+            keeper_version,
             root,
         })
     }

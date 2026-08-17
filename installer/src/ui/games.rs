@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::app::{App, Details, Edit, Mode};
+use crate::app::{App, Details, Edit, KeeperState, Mode};
 use crate::image;
 use crate::steam::Found;
 use crate::version;
@@ -30,6 +30,7 @@ pub fn screen(app: &mut App, ctx: &egui::Context, ui: &mut egui::Ui) {
 
     if app.mode == Mode::Edit {
         staleLauncher(app, ctx, ui);
+        staleKeeper(app, ctx, ui);
         existing(app, ctx, ui);
         ui.separator();
     }
@@ -106,6 +107,33 @@ fn staleLauncher(app: &mut App, ctx: &egui::Context, ui: &mut egui::Ui) {
         );
         if ui.button("Update launcher").clicked() {
             app.updateLauncher(ctx);
+        }
+    });
+    ui.add_space(8.0);
+}
+
+/// The keeper counterpart to [`staleLauncher`] — shown when the cartridge
+/// either has an out-of-date `keeper.exe` or, on a cartridge from before
+/// keeper existed, none at all.
+fn staleKeeper(app: &mut App, ctx: &egui::Context, ui: &mut egui::Ui) {
+    let Some(state) = app.staleKeeper else {
+        return;
+    };
+    let ours = version::bundledKeeper()
+        .expect("staleKeeper is only set when the bundled keeper version parsed");
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        let message = match state {
+            KeeperState::Missing => format!(
+                "This cartridge has no keeper — it predates one. This installer carries \
+                 version {ours}."
+            ),
+            KeeperState::Stale(theirs) => format!(
+                "This cartridge's keeper is version {theirs}, this installer carries {ours}."
+            ),
+        };
+        ui.colored_label(WARN, message);
+        if ui.button("Update keeper").clicked() {
+            app.updateKeeper(ctx);
         }
     });
     ui.add_space(8.0);

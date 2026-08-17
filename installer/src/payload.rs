@@ -4,9 +4,9 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Exposes the bytes `build.rs` embedded — launcher, listener, seed config and
-//! catalog — and inflates the two compressed binaries, checking the unpacked
-//! length against the size recorded at build time.
+//! Exposes the bytes `build.rs` embedded — launcher, listener, keeper, seed
+//! config and catalog — and inflates the three compressed binaries, checking
+//! the unpacked length against the size recorded at build time.
 
 // ########## THE EMBEDDED PAYLOAD ##########
 
@@ -15,9 +15,11 @@
 // length does not answer "will this fit on the drive".
 include!(concat!(env!("OUT_DIR"), "/sizes.rs"));
 
-// `LAUNCHER_VERSION`, read by `build.rs` from `../launcher/Cargo.toml`'s
-// `[package].version` — the source of truth, not anything the built exe reports.
+// `LAUNCHER_VERSION` and `KEEPER_VERSION`, read by `build.rs` from each crate's
+// own `Cargo.toml`'s `[package].version` — the source of truth, not anything
+// the built exe reports.
 include!(concat!(env!("OUT_DIR"), "/launcher-version.rs"));
+include!(concat!(env!("OUT_DIR"), "/keeper-version.rs"));
 
 /// The cartridge's app, written to `<volume>/launcher.exe` — packed.
 ///
@@ -30,6 +32,10 @@ const LAUNCHER_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/launcher.e
 /// The PC-side service, written into the listener's install folder — packed.
 const LISTENER_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/listener.exe.z"));
 
+/// The launcher's detached keepalive worker, written to `<volume>/keeper.exe`
+/// beside it — packed.
+const KEEPER_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/keeper.exe.z"));
+
 /// The launcher, ready to write.
 pub fn launcher() -> Result<Vec<u8>, String> {
     unpack("launcher.exe", LAUNCHER_EXE, LAUNCHER_BYTES)
@@ -38,6 +44,11 @@ pub fn launcher() -> Result<Vec<u8>, String> {
 /// The listener, ready to write.
 pub fn listener() -> Result<Vec<u8>, String> {
     unpack("listener.exe", LISTENER_EXE, LISTENER_BYTES)
+}
+
+/// The keeper, ready to write.
+pub fn keeper() -> Result<Vec<u8>, String> {
+    unpack("keeper.exe", KEEPER_EXE, KEEPER_BYTES)
 }
 
 /// Unpacks one payload binary, refusing anything that is not exactly what went
@@ -84,6 +95,7 @@ pub fn missing() -> Vec<&'static str> {
     [
         ("launcher.exe", LAUNCHER_EXE),
         ("listener.exe", LISTENER_EXE),
+        ("keeper.exe", KEEPER_EXE),
         ("config.toml", LAUNCHER_CONFIG),
     ]
     .into_iter()

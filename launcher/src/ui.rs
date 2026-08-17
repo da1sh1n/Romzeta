@@ -107,7 +107,7 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
     // Before `proxy` is moved into the IPC handler below: the tray icon's
     // own window needs a clone to send `TrayRestoreRequested` back here.
     if !tray::init(proxy.clone()) {
-        log::line(base_dir, "failed to create the tray icon window; continuing without one");
+        log::logLine(base_dir, "failed to create the tray icon window; continuing without one");
     }
 
     let base_for_launch = base_dir.to_path_buf();
@@ -270,7 +270,7 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                             if let Err(error) =
                                 keeper::spawn(&base_for_usage, pid, playtime.as_deref())
                             {
-                                log::line(
+                                log::logLine(
                                     &base_for_usage,
                                     &format!("failed to start detached keeper for pid {pid}: {error}"),
                                 );
@@ -320,7 +320,7 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
             topmost_until = None;
             window::hide(&window);
             if !tray::show() {
-                log::line(&base_for_usage, "failed to add the tray icon; continuing without one");
+                log::logLine(&base_for_usage, "failed to add the tray icon; continuing without one");
             }
             // Off screen is the only moment the outro can be torn down without
             // being seen unwinding.

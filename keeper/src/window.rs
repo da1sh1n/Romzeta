@@ -33,10 +33,9 @@ const WINDOW_CLASS: &str = "Romzeta.KeeperWindow";
 /// background thread, and pumps messages until that thread posts `WM_QUIT` —
 /// which is what lets the process exit once the game does.
 pub fn runBehindHiddenWindow(base_dir: PathBuf, pid: u32, playtime_path: Option<PathBuf>) {
-    // A window that fails to create is not a reason to skip the keepalive
-    // itself — same reasoning as the tray icon in listener's addTrayIcon. The
-    // message loop below still works without one; PostThreadMessageW targets
-    // the thread, not a window.
+    // If window creation fails, the keepalive loop still runs —
+    // PostThreadMessageW targets the thread, not the window (same
+    // reasoning as listener's addTrayIcon).
     createHiddenWindow();
 
     let main_thread = unsafe { GetCurrentThreadId() };

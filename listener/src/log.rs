@@ -14,11 +14,6 @@ use std::path::{Path, PathBuf};
 
 use crate::settings;
 
-/// Rewrite the log from scratch once it passes this size. The Windows build is
-/// resident for a whole login session, so an unbounded append would grow
-/// forever on a machine that plugs devices in all day.
-const MAX_LOG_BYTES: u64 = 1024 * 1024;
-
 pub struct Log {
     /// `None` when no usable path could be resolved — the listener then runs
     /// silently rather than refusing to start.
@@ -72,6 +67,6 @@ impl Log {
         let Some(path) = &self.path else {
             return;
         };
-        common::log::appendLine(path, message, MAX_LOG_BYTES);
+        common::log::appendLine(path, message, common::log::DEFAULT_MAX_LOG_BYTES);
     }
 }

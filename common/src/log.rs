@@ -15,6 +15,11 @@ use std::path::Path;
 
 use crate::time;
 
+/// Rewrite a log from scratch once it passes this size. Every crate's log is
+/// a troubleshooting trail, not an audit record, so old content is fine to
+/// lose once it grows large.
+pub const DEFAULT_MAX_LOG_BYTES: u64 = 1024 * 1024;
+
 /// Appends `message` to the file at `path`, prefixed with a UTC timestamp.
 /// Creates the parent folder first, and truncates the file if it has grown past
 /// `max_bytes`. Every error is discarded, so this cannot fail from the caller's

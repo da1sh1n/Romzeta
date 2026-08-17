@@ -44,7 +44,7 @@ pub fn load(base_dir: &Path) -> Vec<Game> {
         .filter(|game| {
             let contained = isContained(&game.exe) && isContained(&game.image);
             if !contained {
-                log::line(
+                log::logLine(
                     base_dir,
                     &format!(
                         "REFUSED {}: catalog exe/image path escapes the cartridge \

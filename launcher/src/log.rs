@@ -14,15 +14,14 @@ use std::path::Path;
 use std::process::Stdio;
 
 use crate::catalog::Game;
-use crate::constants::MAX_LOG_BYTES;
 
 /// Appends one timestamped line to `logs/launcher.log` under `base`. Errors are
-/// ignored, and the file is truncated once it passes `MAX_LOG_BYTES`.
-pub fn line(base: &Path, message: &str) {
+/// ignored, and the file is truncated once it grows too large.
+pub fn logLine(base: &Path, message: &str) {
     common::log::appendLine(
         &base.join("logs").join("launcher.log"),
         message,
-        MAX_LOG_BYTES,
+        common::log::DEFAULT_MAX_LOG_BYTES,
     );
 }
 

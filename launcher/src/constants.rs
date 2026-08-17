@@ -238,9 +238,3 @@ pub const STEAM_WAIT: Duration = Duration::from_secs(120);
 
 /// How often the wait above re-reads Steam's `ActiveProcess` key.
 pub const STEAM_POLL: Duration = Duration::from_millis(250);
-
-// ── Logs (log.rs) ────────────────────────────────────────────────────────
-
-/// Rewrite `launcher.log` from scratch once it passes this size. Same reasoning
-/// as the listener's log: this is a troubleshooting trail, not an audit record.
-pub const MAX_LOG_BYTES: u64 = 1024 * 1024;

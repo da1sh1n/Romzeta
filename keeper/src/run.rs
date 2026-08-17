@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::log::logLine;
 use crate::playtime;
 
 /// Disk-touch cadence in milliseconds.
@@ -22,22 +23,17 @@ pub(crate) const KEEPALIVE_INTERVAL_MS: u64 = 10_000;
 /// Process-liveness check cadence in milliseconds.
 const PROCESS_CHECK_INTERVAL_MS: u64 = 30_000;
 
-/// Rewrite `logs/keeper.log` from scratch once it passes this size. Same
-/// reasoning as the launcher's own log: a troubleshooting trail, not an audit
-/// record.
-const MAX_LOG_BYTES: u64 = 1024 * 1024;
-
 pub fn run(base_dir: &Path, pid: u32, playtime_path: Option<PathBuf>) {
     let mut counter = playtime_path.map(playtime::open);
 
     if let Err(error) = common::lease::writeLease(pid, base_dir) {
-        log(
+        logLine(
             base_dir,
             &format!("keeper failed to write global lease for pid {pid}: {error}"),
         );
     }
 
-    log(
+    logLine(
         base_dir,
         &format!(
             "keeper started for pid {pid} (keepalive={}ms, check={}ms)",
@@ -50,46 +46,31 @@ pub fn run(base_dir: &Path, pid: u32, playtime_path: Option<PathBuf>) {
     let mut next_process_check = Instant::now();
 
     loop {
-        if Instant::now() >= next_process_check {
-            if !common::lease::processExists(pid) {
-                break;
-            }
-            next_process_check = Instant::now() + process_check_tick;
+        if Instant::now() >= next_process_check && !common::lease::processExists(pid) {
+            break;
         }
-
+        
         keepAlive(base_dir, &mut counter);
         thread::sleep(keepalive_tick);
+        next_process_check = next_process_check + process_check_tick;
     }
 
     if let Err(error) = common::lease::clearLease() {
-        log(base_dir, &format!("keeper failed to clear global lease: {error}"));
+        logLine(base_dir, &format!("keeper failed to clear global lease: {error}"));
     }
-    log(base_dir, &format!("keeper stopped for pid {pid}"));
+    logLine(base_dir, &format!("keeper stopped for pid {pid}"));
 }
 
-/// Ticks the playtime counter when there is one — the flushed write is the
-/// keepalive. Falls back to listing the cartridge root otherwise (no game
-/// identified, e.g. a hand-edited catalog, or a dev run with no `--playtime`).
+/// Keepalive: ticks the playtime counter if there is one, else lists the
+/// cartridge root (no game identified, or a dev run with no `--playtime`).
 fn keepAlive(base_dir: &Path, counter: &mut Option<playtime::Counter>) {
     match counter {
         Some(counter) => counter.tick(),
         None => {
-            // A repeated read of the same file/offset is a page-cache hit
-            // after the first tick, not a disk access — wake.rs hit this
-            // already. Listing the root forces every tick down to the volume
-            // instead of proving only that RAM still remembers last tick's
-            // answer.
+            // Must reach the volume each tick, not just the page cache.
             if let Ok(mut entries) = fs::read_dir(base_dir) {
                 let _ = entries.next();
             }
         }
     }
-}
-
-fn log(base_dir: &Path, message: &str) {
-    common::log::appendLine(
-        &base_dir.join("logs").join("keeper.log"),
-        message,
-        MAX_LOG_BYTES,
-    );
 }

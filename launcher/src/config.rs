@@ -474,7 +474,7 @@ pub fn ids(list: &[usize]) -> toml_edit::Value {
 pub fn store(base_dir: &Path, key: &str, value: toml_edit::Value) {
     let path = base_dir.join("config.toml");
     let Ok(contents) = fs::read_to_string(&path) else {
-        log::line(
+        log::logLine(
             base_dir,
             &format!("could not read config.toml to set {key}"),
         );
@@ -485,7 +485,7 @@ pub fn store(base_dir: &Path, key: &str, value: toml_edit::Value) {
     let Ok(mut doc) = contents.parse::<toml_edit::DocumentMut>() else {
         // The same file `load` gave up on and ran from defaults. Rewriting it
         // would mean guessing at what the author meant; leave it for them.
-        log::line(
+        log::logLine(
             base_dir,
             &format!("config.toml is not valid TOML, leaving {key} unwritten"),
         );
@@ -512,7 +512,7 @@ pub fn store(base_dir: &Path, key: &str, value: toml_edit::Value) {
     }
 
     if let Err(error) = fs::write(&path, doc.to_string()) {
-        log::line(
+        log::logLine(
             base_dir,
             &format!("could not write {key} to config.toml: {error}"),
         );

@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "sigblock",
  "windows-sys 0.61.2",
@@ -1745,7 +1745,7 @@ dependencies = [
 
 [[package]]
 name = "keeper"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "common",
  "windows-sys 0.61.2",
@@ -1772,7 +1772,7 @@ dependencies = [
 
 [[package]]
 name = "launcher"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "common",
  "rust-embed",
@@ -1844,7 +1844,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "listener"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "common",
  "sigblock",

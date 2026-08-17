@@ -49,12 +49,12 @@ const MACHINE_KEYS: [&str; 2] = [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE
 #[cfg(windows)]
 pub fn ensureRunning(base: &Path) -> Result<(), String> {
     if isReady() {
-        log::line(base, "steam is already up");
+        log::logLine(base, "steam is already up");
         return Ok(());
     }
 
     let Some(exe) = steamExe() else {
-        log::line(
+        log::logLine(
             base,
             "FAILED steam: no SteamExe or InstallPath in the registry",
         );
@@ -63,7 +63,7 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
 
     // `-silent` is the whole point: Steam goes to the tray and never puts a
     // window in front of the launcher.
-    log::line(
+    log::logLine(
         base,
         &format!("starting steam silently ({})", exe.display()),
     );
@@ -80,7 +80,7 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
         // whether the client came up — `isReady` is the only answer.
         Ok(child) => drop(child),
         Err(e) => {
-            log::line(base, &format!("FAILED steam: {e}"));
+            log::logLine(base, &format!("FAILED steam: {e}"));
             return Err("Failed to start — Steam would not start".to_string());
         }
     }
@@ -88,11 +88,11 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
     let deadline = Instant::now() + STEAM_WAIT;
     loop {
         if isReady() {
-            log::line(base, "steam is up");
+            log::logLine(base, "steam is up");
             return Ok(());
         }
         if Instant::now() >= deadline {
-            log::line(base, "FAILED steam: still not ready after the wait");
+            log::logLine(base, "FAILED steam: still not ready after the wait");
             return Err("Failed to start — Steam didn't finish starting".to_string());
         }
         thread::sleep(STEAM_POLL);
@@ -104,7 +104,7 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
 /// lets the player see why.
 #[cfg(not(windows))]
 pub fn ensureRunning(base: &Path) -> Result<(), String> {
-    log::line(base, "FAILED steam: only supported on Windows");
+    log::logLine(base, "FAILED steam: only supported on Windows");
     Err("Failed to start — Steam support needs Windows".to_string())
 }
 

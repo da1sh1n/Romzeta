@@ -6,7 +6,7 @@
 
 //! Resolves the folder holding the cartridge's content, creates the layout on
 //! first run, seeds `config.toml` and `catalog.json` when absent, and refreshes
-//! the deployed exe during development.
+//! the deployed launcher and keeper exes during development.
 
 // ########## THE CONTENT FOLDER ##########
 
@@ -88,6 +88,7 @@ pub fn ensureLayout(base: &Path) {
 
     seedIfMissing(&base.join("catalog.json"), DEFAULT_CATALOG);
     refreshDeployedExe(base);
+    refreshDeployedKeeper(base);
 }
 
 /// Copies the seed config over `output/config.toml` during development,
@@ -133,6 +134,20 @@ fn refreshDeployedExe(base: &Path) {
     let Ok(exe) = env::current_exe() else {
         return;
     };
+    // Test binaries are named like `launcher-<hash>.exe`; copying them into
+    // `output/launcher.exe` would overwrite a signed shipped binary.
+    let expected_name = if cfg!(windows) {
+        "launcher.exe"
+    } else {
+        "launcher"
+    };
+    if exe
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_none_or(|name| !name.eq_ignore_ascii_case(expected_name))
+    {
+        return;
+    }
     let dst = base.join("launcher.exe");
     // Canonicalized before comparing, so a path reached two different ways
     // (a symlink, `..`, a short 8.3 name) is still recognised as the same file.
@@ -142,4 +157,31 @@ fn refreshDeployedExe(base: &Path) {
         return;
     }
     let _ = fs::copy(&exe, &dst);
+}
+
+/// Copies `keeper.exe`, once built, from beside this exe into `output/` too —
+/// same reasoning as `refreshDeployedExe`, kept separate because keeper is its
+/// own crate with its own build step. A no-op, not an error, when `cargo build
+/// -p keeper` hasn't run yet: `keeper::spawn` doesn't depend on this copy
+/// either way, since it always looks next to whichever `launcher.exe` is
+/// currently running.
+fn refreshDeployedKeeper(base: &Path) {
+    let Ok(exe) = env::current_exe() else {
+        return;
+    };
+    let Some(dir) = exe.parent() else {
+        return;
+    };
+    let keeper_name = if cfg!(windows) { "keeper.exe" } else { "keeper" };
+    let source = dir.join(keeper_name);
+    if !source.is_file() {
+        return;
+    }
+    let dst = base.join(keeper_name);
+    if let (Ok(a), Ok(b)) = (source.canonicalize(), dst.canonicalize())
+        && a == b
+    {
+        return;
+    }
+    let _ = fs::copy(&source, &dst);
 }

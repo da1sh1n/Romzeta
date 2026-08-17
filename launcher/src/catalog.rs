@@ -11,7 +11,7 @@
 // ########## THE GAME LIST ##########
 
 use std::fs;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -78,6 +78,22 @@ pub(crate) fn isContained(relative: &str) -> bool {
 /// once, at startup — a game whose files never shipped is a state of the
 /// cartridge, not of a launch, and the page marks those covers as unplayable
 /// instead of letting the player click into a guaranteed failure.
+/// `games/<slug>` under `base_dir` for one entry — the folder holding its
+/// files. Derived from `exe` rather than stored anywhere, matching the
+/// installer's own `catalog::gameDir`, so a rename never moves it. `None` for
+/// a hand-edited or pre-`games/` catalog entry that isn't shaped this way.
+pub fn gameDir(base_dir: &Path, game: &Game) -> Option<PathBuf> {
+    let mut parts = Path::new(&game.exe)
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(part) => Some(part),
+            _ => None,
+        });
+    (parts.next()? == "games").then_some(())?;
+    let slug = parts.next()?;
+    Some(base_dir.join("games").join(slug))
+}
+
 pub fn payload(base_dir: &Path, games: &[Game]) -> serde_json::Value {
     serde_json::Value::Array(
         games

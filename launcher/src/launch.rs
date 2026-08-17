@@ -23,7 +23,7 @@ use crate::steam;
 /// What became of one launch, as far as the player is concerned.
 pub enum Outcome {
     /// The game is up. The launcher's cue to minimize itself.
-    Started,
+    Started(u32),
     /// It isn't, and this is the one short line to put under its cover. The
     /// long version is already in `logs/launcher.log`.
     Failed(String),
@@ -116,6 +116,7 @@ fn spawn(
 /// Blocks until the game is up (or clearly isn't). Call on a worker thread —
 /// never on the UI thread, which has a window to keep repainting.
 fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
+    let pid = child.id();
     match waitForWindow(&child) {
         // A window came up — but hold on briefly before believing it. A game
         // that flashes an error box and quits satisfies WaitForInputIdle just
@@ -124,9 +125,9 @@ fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
         Window::Ready => match outlives(&mut child, READY_CONFIRM) {
             None => {
                 log::line(base, &format!("{} is up", game.name));
-                Outcome::Started
+                Outcome::Started(pid)
             }
-            Some(status) => finishedEarly(base, game, status),
+            Some(status) => finishedEarly(base, game, status, pid),
         },
         Window::TimedOut => {
             // Not a failure. Saying otherwise would punish slow games, and the
@@ -138,27 +139,27 @@ fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
                     game.name
                 ),
             );
-            Outcome::Started
+            Outcome::Started(pid)
         }
         // WaitForInputIdle refuses non-GUI processes, and there's nothing to
         // ask on other platforms. Fall back to plain survival.
         Window::Unsupported => match outlives(&mut child, LIVENESS_GRACE) {
             None => {
                 log::line(base, &format!("{} is running", game.name));
-                Outcome::Started
+                Outcome::Started(pid)
             }
-            Some(status) => finishedEarly(base, game, status),
+            Some(status) => finishedEarly(base, game, status, pid),
         },
     }
 }
 
 /// A game that was gone before we ever reported it as started.
-fn finishedEarly(base: &Path, game: &Game, status: std::process::ExitStatus) -> Outcome {
+fn finishedEarly(base: &Path, game: &Game, status: std::process::ExitStatus, pid: u32) -> Outcome {
     // Exit code 0 in the first couple of seconds is odd but not an error — a
     // stub that hands off to another process does exactly this.
     if status.success() {
         log::line(base, &format!("{} exited immediately, cleanly", game.name));
-        return Outcome::Started;
+        return Outcome::Started(pid);
     }
     // The exit code goes to the log, not under the cover: it means nothing to
     // a player, and a line long enough to wrap is worse than a short one.

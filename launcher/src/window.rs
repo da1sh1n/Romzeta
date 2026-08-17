@@ -245,16 +245,16 @@ pub fn dropTopmost(window: &tao::window::Window) {
     window.set_always_on_top(false);
 }
 
-/// Sends the window to the taskbar once a game is up.
+/// Hides the window outright, with no taskbar button, once a game is up.
 ///
-/// Minimized rather than closed, and rather than hidden outright: the process
-/// staying alive is what holds the single-instance mutex, so a cartridge that
-/// re-enumerates mid-game — a USB device dropping and re-arriving is routine —
-/// cannot put a second launcher in front of the game. The taskbar button is the
-/// player's way back to the covers.
-pub fn minimize(window: &tao::window::Window) {
+/// Hidden rather than closed: the process staying alive is what holds the
+/// single-instance mutex, so a cartridge that re-enumerates mid-game — a USB
+/// device dropping and re-arriving is routine — cannot put a second launcher
+/// in front of the game. The tray icon (see `crate::tray`) is the player's
+/// way back to the covers now that there is no taskbar button to click.
+pub fn hide(window: &tao::window::Window) {
     // Dropped first: a topmost window that is restored later would come back
     // over the game, and the launch can land inside the raise grace period.
     window.set_always_on_top(false);
-    window.set_minimized(true);
+    window.set_visible(false);
 }

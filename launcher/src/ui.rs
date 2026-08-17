@@ -17,7 +17,7 @@
 
 // ########## WINDOW, WEBVIEW AND IPC ##########
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Instant;
 
@@ -31,12 +31,16 @@ use crate::catalog;
 use crate::config::Config;
 use crate::constants::*;
 use crate::window;
-use crate::{assets, config, launch, order};
+use crate::{assets, config, keeper, launch, log, order, tray};
 
-enum UserEvent {
+/// `pub(crate)` so `tray::windows` can send `TrayRestoreRequested` back into
+/// this event loop.
+pub(crate) enum UserEvent {
     CloseRequested,
     /// The page has finished its outro over a game that came up.
     HideRequested,
+    /// A left-click or "Open Romzeta" on the tray icon: bring the window back.
+    TrayRestoreRequested,
     /// How a launch ended, on its way from the worker thread in `launch.rs`
     /// back to the page. `ok` means the game is up — the launcher's cue to get
     /// out of its way; otherwise `message` is the line to put under the cover.
@@ -44,6 +48,11 @@ enum UserEvent {
         index: usize,
         ok: bool,
         message: String,
+        pid: Option<u32>,
+        /// Where keeper should tick this game's playtime counter. `None`
+        /// when the launch failed, or the catalog entry isn't shaped like
+        /// `games/<slug>/…` for `catalog::gameDir` to resolve.
+        playtime: Option<PathBuf>,
     },
 }
 
@@ -76,7 +85,7 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
     let show_console_window = config.show_console_window;
 
     let window = WindowBuilder::new()
-        .with_title("Cartridge Launcher")
+        .with_title("Romzeta Launcher")
         // Logical (CSS) pixels, so the size matches the units the page's CSS
         // uses; the OS scales to this monitor's DPI. The page then fits the
         // covers into this size.
@@ -94,6 +103,12 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
     // Only now, once it is the size and in the place it will stay: raising a
     // window that is still being moved shows the move.
     window::raise(&window);
+
+    // Before `proxy` is moved into the IPC handler below: the tray icon's
+    // own window needs a clone to send `TrayRestoreRequested` back here.
+    if !tray::init(proxy.clone()) {
+        log::line(base_dir, "failed to create the tray icon window; continuing without one");
+    }
 
     let base_for_launch = base_dir.to_path_buf();
     let base_for_protocol = base_dir.to_path_buf();
@@ -179,11 +194,22 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
             let base = base_for_launch.clone();
             let game = game.clone();
             thread::spawn(move || {
-                let (ok, message) = match launch::run(&base, &game, index, show_console_window) {
-                    launch::Outcome::Started => (true, String::new()),
-                    launch::Outcome::Failed(message) => (false, message),
-                };
-                let _ = proxy.send_event(UserEvent::LaunchOutcome { index, ok, message });
+                let (ok, message, pid, playtime) =
+                    match launch::run(&base, &game, index, show_console_window) {
+                        launch::Outcome::Started(pid) => {
+                            let playtime = catalog::gameDir(&base, &game)
+                                .map(|dir| dir.join("counter.txt"));
+                            (true, String::new(), Some(pid), playtime)
+                        }
+                        launch::Outcome::Failed(message) => (false, message, None, None),
+                    };
+                let _ = proxy.send_event(UserEvent::LaunchOutcome {
+                    index,
+                    ok,
+                    message,
+                    pid,
+                    playtime,
+                });
             });
         })
         .build(&window)?;
@@ -211,9 +237,24 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                 event: WindowEvent::CloseRequested,
                 ..
             }
-            | Event::UserEvent(UserEvent::CloseRequested) => exiting = true,
+            | Event::UserEvent(UserEvent::CloseRequested) => {
+                exiting = true;
+                tray::remove();
+            }
             Event::UserEvent(UserEvent::HideRequested) => hiding = true,
-            Event::UserEvent(UserEvent::LaunchOutcome { index, ok, message }) => {
+            Event::UserEvent(UserEvent::TrayRestoreRequested) => {
+                window.set_visible(true);
+                window::raise(&window);
+                topmost_until = Some(Instant::now() + TOPMOST_GRACE);
+                tray::remove();
+            }
+            Event::UserEvent(UserEvent::LaunchOutcome {
+                index,
+                ok,
+                message,
+                pid,
+                playtime,
+            }) => {
                 // The page decides what this looks like: finish the spinner and
                 // close on success, or unwind the transition and mark the cover
                 // on failure. Guarded with `&&` so a page without the hook (an
@@ -224,6 +265,18 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                 );
                 let _ = webview.evaluate_script(&script);
                 if ok {
+                    if let Some(pid) = pid {
+                        if pid > 0 {
+                            if let Err(error) =
+                                keeper::spawn(&base_for_usage, pid, playtime.as_deref())
+                            {
+                                log::line(
+                                    &base_for_usage,
+                                    &format!("failed to start detached keeper for pid {pid}: {error}"),
+                                );
+                            }
+                        }
+                    }
                     // "Last opened" means opened, not attempted: a game that
                     // failed to start has told the player nothing about what
                     // they want to play next, and pushing it to the front of the
@@ -265,7 +318,10 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
             // and the backstop can't minimize the same launch twice.
             hide_deadline = None;
             topmost_until = None;
-            window::minimize(&window);
+            window::hide(&window);
+            if !tray::show() {
+                log::line(&base_for_usage, "failed to add the tray icon; continuing without one");
+            }
             // Off screen is the only moment the outro can be torn down without
             // being seen unwinding.
             let _ = webview.evaluate_script("window.__launchReset && window.__launchReset();");

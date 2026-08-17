@@ -22,10 +22,12 @@ mod config;
 mod constants;
 mod content;
 mod instance;
+mod keeper;
 mod launch;
 mod log;
 mod order;
 mod steam;
+mod tray;
 mod ui;
 mod version;
 mod window;
@@ -34,9 +36,13 @@ mod window;
 mod tests;
 
 fn main() -> wry::Result<()> {
-    // First, before anything touches the disk. The listener asks a verified
-    // launcher for its version, and a launcher that seeded folders or rewrote
-    // its own exe on the way to answering would be writing to the cartridge in
+    // Before anything else, so Task Manager groups this process under the same
+    // "Romzeta" entry as the listener, keeper and installer.
+    common::aumid::set();
+
+    // Before anything touches the disk. The listener asks a verified launcher
+    // for its version, and a launcher that seeded folders or rewrote its own
+    // exe on the way to answering would be writing to the cartridge in
     // response to a question. See version.rs.
     if version::handled() {
         return Ok(());

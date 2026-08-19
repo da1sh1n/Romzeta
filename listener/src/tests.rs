@@ -203,7 +203,7 @@ mod volume {
     use super::Scratch;
     use crate::log::Log;
     use crate::trust;
-    use crate::volume::{Outcome, handleVolume};
+    use crate::volume::{Announce, Outcome, handleVolume};
     use std::fs;
 
     /// Builds a fake volume in a temp folder.
@@ -218,7 +218,10 @@ mod volume {
     #[test]
     fn a_volume_with_no_launcher_is_ignored() {
         let dir = fakeVolume("plain", None);
-        assert_eq!(handleVolume(dir.path(), &Log::silent()), Outcome::Ignored);
+        assert_eq!(
+            handleVolume(dir.path(), &Log::silent(), Announce::Never),
+            Outcome::Ignored
+        );
     }
 
     #[test]
@@ -226,7 +229,10 @@ mod volume {
         // The whole point of the change: a binary sitting at a volume root with
         // the right *name* gets nowhere without the right signature.
         let dir = fakeVolume("unsigned", Some(b"MZ nobody signed this"));
-        assert_eq!(handleVolume(dir.path(), &Log::silent()), Outcome::Ignored);
+        assert_eq!(
+            handleVolume(dir.path(), &Log::silent(), Announce::Never),
+            Outcome::Ignored
+        );
     }
 
     #[test]
@@ -237,6 +243,9 @@ mod volume {
                          AAAA==\n";
         let signed = sigblock::attach(b"MZ signed by someone else", signature);
         let dir = fakeVolume("stranger", Some(&signed));
-        assert_eq!(handleVolume(dir.path(), &Log::silent()), Outcome::Ignored);
+        assert_eq!(
+            handleVolume(dir.path(), &Log::silent(), Announce::Never),
+            Outcome::Ignored
+        );
     }
 }

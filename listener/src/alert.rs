@@ -9,28 +9,40 @@
 
 // ########## THE ONE WARNING ##########
 
-/// Shows a warning the user can dismiss, and returns immediately.
+/// A box that is still up. Dropping it leaves it standing, which is what the
+/// trigger wants; `wait` is for a one-shot run that would otherwise exit and
+/// take the box with it.
+pub struct Warning(Option<std::thread::JoinHandle<()>>);
+
+impl Warning {
+    /// Blocks until the user dismisses the box.
+    pub fn wait(self) {
+        if let Some(handle) = self.0 {
+            // A panic inside a `MessageBoxW` call is nothing the caller can act
+            // on, and the wait is over either way.
+            drop(handle.join());
+        }
+    }
+}
+
+/// Shows a warning and returns at once.
 ///
-/// **Never blocks the caller.** On Windows the listener spends its whole life
-/// in `GetMessage` on one thread, so a modal box shown from there would hold up
-/// every later device arrival until it was closed. This hands it to a thread of
-/// its own and lets that thread outlive the call.
+/// The listener sits in `GetMessage` on one thread for its whole life, so a box
+/// shown there would stall every later device arrival until it was dismissed.
 #[cfg(windows)]
-pub fn warn(title: &str, message: &str) {
+pub fn warn(title: &str, message: &str) -> Warning {
     use common::utf16::wide;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         MB_ICONWARNING, MB_OK, MB_SETFOREGROUND, MB_SYSTEMMODAL, MessageBoxW,
     };
 
-    // Converted before the spawn: the buffers must be owned by the closure, and
-    // `&str` borrowed from the caller could not be moved into a thread that
-    // outlives this call.
+    // Owned buffers: a `&str` borrowed from the caller cannot move into a
+    // thread that outlives the call.
     let title = wide(title);
     let message = wide(message);
-    std::thread::spawn(move || {
-        // MB_SETFOREGROUND and MB_SYSTEMMODAL because this box has no owner
-        // window to sit in front of — without them it can open behind whatever
-        // is fullscreen, which for a games launcher is most of the time.
+    Warning(Some(std::thread::spawn(move || {
+        // No owner window, so without these flags the box can open behind a
+        // fullscreen game.
         unsafe {
             MessageBoxW(
                 std::ptr::null_mut(),
@@ -39,11 +51,13 @@ pub fn warn(title: &str, message: &str) {
                 MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_SYSTEMMODAL,
             );
         }
-    });
+    })))
 }
 
 /// No portable way to raise a dialog from a headless process, and the Linux
 /// trigger is one-shot from udev with no session to show one in. The log
 /// carries the same sentence.
 #[cfg(not(windows))]
-pub fn warn(_title: &str, _message: &str) {}
+pub fn warn(_title: &str, _message: &str) -> Warning {
+    Warning(None)
+}

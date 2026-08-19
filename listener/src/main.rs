@@ -10,9 +10,7 @@
 //
 // No console window: this waits in the background, it is not a CLI tool.
 #![windows_subsystem = "windows"]
-// Functions are camelCase in this project while variables stay snake_case,
-// which rustc's default lints object to. Silenced once, at the crate root.
-#![allow(non_snake_case)]
+#![allow(non_snake_case)] // camelCase functions
 
 mod alert;
 mod log;
@@ -33,7 +31,7 @@ use log::Log;
 
 // ########## STARTUP ##########
 
-/// What this invocation was asked to do.
+/// The mode the exe is running in, as determined by the command line.
 enum Mode {
     /// Print `x.y.z` and exit.
     Version,
@@ -41,19 +39,17 @@ enum Mode {
     Signature,
     /// Run the core once against one volume, then exit.
     Check(PathBuf),
+    /// Print command line usage and exit. Also what a bare `--check` falls to.
+    Help,
     /// Wait for cartridges. The default, and what the login entry starts.
     Trigger,
 }
 
 fn main() {
-    // Before anything else, so Task Manager groups this process under the same
-    // "Romzeta" entry as the launcher, keeper and installer.
+    // So Task Manager groups this under "Romzeta" with the other processes.
     common::aumid::set();
 
-    // The two printing modes are answered before anything touches the disk:
-    // creating folders or refreshing an exe as a side effect of being asked a
-    // question would be surprising, and on a cartridge it would be a write to
-    // someone else's disk.
+    // Process the command line into a `Mode` and dispatch.
     match mode() {
         Mode::Version => {
             sigblock::cli::attachConsole();
@@ -62,16 +58,15 @@ fn main() {
         Mode::Signature => {
             sigblock::cli::attachConsole();
             sigblock::cli::printSignature();
-            // What this listener will accept, which is the other half of the
-            // question "is this exe the one I think it is?".
             println!("trusts: {}", trust::anchorNames());
         }
-        // Hand-run against one volume: the same core the triggers call, so
-        // "does this cartridge work on this PC?" can be answered without
-        // plugging anything in.
         Mode::Check(root) => {
-            let logger = start();
-            volume::handleVolume(&root, &logger);
+            let logger: Log = start();
+            volume::handleVolume(&root, &logger, volume::Announce::UntilDismissed);
+        }
+        Mode::Help => {
+            sigblock::cli::attachConsole();
+            printUsage();
         }
         Mode::Trigger => trigger::run(start()),
     }
@@ -80,21 +75,21 @@ fn main() {
 /// Sets the deployment folder up and opens the log. Shared by the two modes
 /// that actually do something.
 fn start() -> Log {
-    let dir = resolveBaseDir();
+    let dir: PathBuf = resolveBaseDir();
     let _ = fs::create_dir_all(&dir);
-    refreshDeployedExe(&dir);
     Log::open(Some(settings::defaultLogPath(&dir)))
 }
 
-/// Reads the command line into a `Mode`. Anything unrecognised, including
-/// `--check` with no path, falls through to `Mode::Trigger`; `--version` and
-/// `--signature` return immediately and win over everything else.
+/// Reads the command line into a `Mode`. `--version`, `--signature` and
+/// `--help` return immediately and win over everything else. `--check` with
+/// no path following it falls to `Mode::Help` rather than `Mode::Trigger` —
+/// a mistyped invocation is a mistake to report, not silence to wait in.
 fn mode() -> Mode {
     // `args_os` so a non-UTF-8 argument cannot panic us before we have started.
     let mut args = env::args_os().skip(1);
-    let mut check = None;
-    // `while let` rather than `for`, because `--check` consumes the next
-    // argument and so needs the iterator itself inside the loop.
+    let mut check: Option<PathBuf> = None;
+    let mut sawCheck = false;
+
     while let Some(arg) = args.next() {
         if arg == "--version" {
             return Mode::Version;
@@ -102,89 +97,44 @@ fn mode() -> Mode {
         if arg == "--signature" {
             return Mode::Signature;
         }
-        // `is_none()` so a repeated `--check` keeps the first path.
+        if arg == "--help" {
+            return Mode::Help;
+        }
         if arg == "--check" && check.is_none() {
+            sawCheck = true;
             check = args.next().map(PathBuf::from);
         }
     }
     match check {
-        Some(root) => Mode::Check(root),
-        None => Mode::Trigger,
+        Some(root) => Mode::Check(root), // `--check` with a path wins over `--help`.
+        None if sawCheck => Mode::Help,  // `--check` with no path falls to `--help`.
+        None => Mode::Trigger,           // `--check` not present, the default.
     }
+}
+
+/// What `--help` prints, and what a bare `--check` with no path falls back to.
+fn printUsage() {
+    println!("romzeta-listener {}", version::own());
+    println!();
+    println!("Waits for cartridges and launches their keeper. Run with no");
+    println!("arguments to do this; the options below are for diagnostics.");
+    println!();
+    println!("USAGE:");
+    println!("    listener.exe [OPTIONS]");
+    println!();
+    println!("OPTIONS:");
+    println!("    --check <PATH>   Run the core once against one volume, then exit.");
+    println!("    --signature      Print this exe's signature block and trusted keys.");
+    println!("    --version        Print the version and exit.");
+    println!("    --help           Print this message and exit.");
 }
 
 // ========== The Deployment Folder ==========
 
-/// The folder holding `listener.exe` and its log: normally just the folder the
-/// exe is in, but the repo's `output/` for a `cargo run` or `cargo test` build.
-///
-/// The dev check is "is the exe inside a `target/` belonging to this crate?"
-/// rather than "is its parent named `output`?" — the latter would treat an
-/// installed `…\AppData\Local\Romzeta\listener.exe` as a dev build too.
-///
-/// *Two* target directories, because the crate builds both ways: standalone its
-/// artifacts land in `listener/target/`, and inside the workspace in the shared
-/// `../target/`. Checking only the first would make a workspace `cargo run`
-/// look deployed and silently write its log into `target/debug/`.
+/// The folder holding `listener.exe` and its log: the exe's own parent folder.
 fn resolveBaseDir() -> PathBuf {
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let dev_targets = [
-        Some(manifest.join("target")),
-        manifest.parent().map(|root| root.join("target")),
-    ];
-
-    let exe = env::current_exe().ok();
-    // A let-chain: bind the exe path and test it in one condition, so the
-    // `else` below can still consume `exe` by value.
-    if let Some(exe) = &exe
-        && dev_targets
-            .iter()
-            // `flatten` drops the None from a manifest with no parent.
-            .flatten()
-            .any(|target| exe.starts_with(target))
-    {
-        return manifest.join("output");
-    }
-    exe.and_then(|exe| exe.parent().map(Path::to_path_buf))
+    env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
         .unwrap_or_else(|| PathBuf::from("."))
-}
-
-/// Copies the freshly built exe to `output/listener.exe`, so the shippable copy
-/// tracks the source. Skipped when we already are that copy.
-///
-/// Failure is non-fatal and expected whenever a deployed listener is holding
-/// its own file open. The signature block rides along, being part of the file —
-/// so a `cargo build` that produced an unsigned exe overwrites the signed copy,
-/// which is exactly what `xtask verify` is for noticing.
-fn refreshDeployedExe(base: &Path) {
-    let Ok(exe) = env::current_exe() else {
-        return;
-    };
-    // Test binaries are named like `listener-<hash>.exe`; copying them into
-    // output would replace a signed deployed binary with an unsigned test one.
-    let expected_name = if cfg!(windows) {
-        "listener.exe"
-    } else {
-        "listener"
-    };
-    if exe
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_none_or(|name| !name.eq_ignore_ascii_case(expected_name))
-    {
-        return;
-    }
-    let deployed = base.join(if cfg!(windows) {
-        "listener.exe"
-    } else {
-        "listener"
-    });
-    // Canonicalized before comparing, so a path reached two different ways
-    // (a symlink, `..`, a short 8.3 name) is still recognised as the same file.
-    if let (Ok(a), Ok(b)) = (exe.canonicalize(), deployed.canonicalize())
-        && a == b
-    {
-        return;
-    }
-    let _ = fs::copy(&exe, &deployed);
 }

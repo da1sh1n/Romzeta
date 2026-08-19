@@ -44,6 +44,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use common::utf16::wide;
 
 use crate::log::Log;
+use crate::volume::Announce;
 use crate::{settings, volume};
 
 /// The listener's mutex name, distinct from the launcher's
@@ -467,13 +468,13 @@ unsafe fn onDeviceArrival(lparam: LPARAM) {
 
     // The bitmask, not a single letter: one event can carry several.
     for letter in lettersFromMask(unitmask) {
-        handleLetter(letter, "arrival");
+        handleLetter(letter, "arrival", Announce::Detached);
     }
 }
 
 /// Runs the shared core over one drive letter, subject to the drive-type filter
 /// and the debounce. `reason` names what brought us here, for the log line.
-fn handleLetter(letter: char, reason: &str) {
+fn handleLetter(letter: char, reason: &str, announce: Announce) {
     withState(|state| {
         let drive_type = driveType(letter);
         if !isCandidateDrive(drive_type) {
@@ -489,7 +490,7 @@ fn handleLetter(letter: char, reason: &str) {
             return;
         }
         let root = driveRoot(letter);
-        volume::handleVolume(&root, &state.log);
+        volume::handleVolume(&root, &state.log, announce);
     });
 }
 
@@ -503,7 +504,7 @@ fn handleLetter(letter: char, reason: &str) {
 /// as a missing feature.
 fn startupSweep() {
     for letter in mountedDriveLetters() {
-        handleLetter(letter, "startup sweep");
+        handleLetter(letter, "startup sweep", Announce::Never);
     }
 }
 

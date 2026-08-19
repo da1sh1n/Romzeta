@@ -75,6 +75,37 @@ impl fmt::Display for Refusal {
     }
 }
 
+impl Refusal {
+    /// The sentence to show the user, or `None` when this refusal is not theirs
+    /// to act on. An ordinary drive is not a fault, and a read that failed on a
+    /// volume still settling is not one they can answer either.
+    pub fn explain(&self) -> Option<String> {
+        let reason = match self {
+            Refusal::NoLauncher | Refusal::Unreadable(_) => return None,
+            Refusal::Signature(trust::Refusal::Unsigned) => format!(
+                "The {LAUNCHER_NAME} on this cartridge carries no signature.\n\n\
+                 Romzeta only starts a launcher signed with a key this PC trusts."
+            ),
+            Refusal::Signature(trust::Refusal::Malformed(_)) => format!(
+                "The signature on this cartridge's {LAUNCHER_NAME} could not be read.\n\n\
+                 The file is damaged, or the copy onto the cartridge did not finish."
+            ),
+            Refusal::Signature(trust::Refusal::Untrusted) => format!(
+                "This cartridge's {LAUNCHER_NAME} is properly signed, but not by a key this \
+                 PC trusts.\n\n\
+                 It trusts: {}.",
+                anchorNames()
+            ),
+            Refusal::Signature(trust::Refusal::WrongRole { expected, found }) => format!(
+                "The file at this cartridge's root is a signed {found}, and a {expected} was \
+                 expected.\n\n\
+                 It is genuine, but it is not the program that starts a cartridge."
+            ),
+        };
+        Some(format!("{reason}\n\nNothing was started."))
+    }
+}
+
 /// Verifies `<root>/launcher.exe` against every baked-in anchor, returning the
 /// held-open file and what its signature says, or why it was refused.
 pub fn verifyLauncher(root: &Path) -> Result<Trusted, Refusal> {

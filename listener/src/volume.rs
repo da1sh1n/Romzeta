@@ -44,6 +44,28 @@ fn gateState() -> &'static Mutex<GateState> {
     STATE.get_or_init(|| Mutex::new(GateState::new()))
 }
 
+/// Whether this call may raise a dialog, and whether it waits for one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Announce {
+    /// Show it and carry on. The trigger's message loop must not stall.
+    Detached,
+    /// Show it and wait. A one-shot run would exit and take the box with it.
+    UntilDismissed,
+    /// Say nothing. The startup sweep passes this: a drive left plugged in must
+    /// not throw a box at every login.
+    Never,
+}
+
+impl Announce {
+    fn show(self, title: &str, message: &str) {
+        match self {
+            Announce::Never => {}
+            Announce::Detached => drop(alert::warn(title, message)),
+            Announce::UntilDismissed => alert::warn(title, message).wait(),
+        }
+    }
+}
+
 /// What became of one volume. Returned as well as logged, because the Windows
 /// trigger debounces on it.
 #[derive(Debug, PartialEq, Eq)]
@@ -61,7 +83,7 @@ pub enum Outcome {
 ///
 /// Every path out logs its reason first — with no console and, on Windows, no
 /// window, the log is the only way to answer "why didn't it start?".
-pub fn handleVolume(root: &Path, log: &Log) -> Outcome {
+pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
     if shouldSuppressGlobalLaunch(log) {
         return Outcome::Ignored;
     }
@@ -75,6 +97,9 @@ pub fn handleVolume(root: &Path, log: &Log) -> Outcome {
             // a cartridge *isn't* being detected, "we looked at E:\ and found
             // nothing" is the line that proves the trigger fired at all.
             log.line(&format!("{} ignored: {reason}", root.display()));
+            if let Some(explanation) = reason.explain() {
+                announce.show("Romzeta — cartridge not started", &explanation);
+            }
             return Outcome::Ignored;
         }
     };
@@ -92,7 +117,7 @@ pub fn handleVolume(root: &Path, log: &Log) -> Outcome {
                 ours.major,
                 launcher.anchor
             ));
-            alert::warn(
+            announce.show(
                 "Romzeta — cartridge not compatible",
                 &format!(
                     "This cartridge's launcher is version {theirs}, but the Romzeta installed \
@@ -153,7 +178,9 @@ pub fn handleVolume(root: &Path, log: &Log) -> Outcome {
 }
 
 fn shouldSuppressGlobalLaunch(log: &Log) -> bool {
-    let mut state = gateState().lock().expect("global lease gate mutex poisoned");
+    let mut state = gateState()
+        .lock()
+        .expect("global lease gate mutex poisoned");
     let now = Instant::now();
     let check_every = Duration::from_millis(PROCESS_CHECK_INTERVAL_MS);
 

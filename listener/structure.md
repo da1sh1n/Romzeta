@@ -40,12 +40,11 @@ see [Execution models](#execution-models).
 ### Deployed layout
 
 The listener keeps its files together in one folder — the same shape as the launcher's
-`output/`, minus the content it has no use for:
+content folder, minus the content it has no use for:
 
 ```text
-output/
-  listener.exe   <- the program
-  listener.log   <- what it did, and why it ignored what it ignored
+listener.exe   <- the program
+listener.log   <- what it did, and why it ignored what it ignored
 ```
 
 Two files, and it used to be three: a `config.toml` held the cartridge keys this PC trusted.
@@ -55,20 +54,8 @@ Trust is compiled in now, so there is nothing left for a config file to hold —
 That folder is simply **wherever the exe is**. Installed, that is
 **`%LOCALAPPDATA%\Romzeta\`** and nowhere else — the installer has one location and no
 elevated path to any other, chosen precisely so these files are always together and
-always writable ([`../installer/structure.md`](../installer/structure.md#elevation)). It can
-also be `output/`, or anywhere the exe was dropped by hand. The single exception is a
-`cargo run` build, whose exe lives under `target/`: that resolves to the repo's `output/`
-instead, and refreshes `output/listener.exe` so the shippable copy tracks the source.
-
-The refresh is done by the exe that is *running*, so `cargo build --release` deploys
-nothing — it never runs anything. `cargo run --release -- --check .` deploys the release
-build and exits.
-
-The "am I a dev build?" test is **"is the exe inside this crate's `target/`?"**, deliberately
-not the launcher's "is my parent folder named `output`?". The latter misreads an installed
-`…\AppData\Local\Romzeta\listener.exe` as a dev build, because that parent isn't named `output`
-either — the bug noted against `runningDeployed()` in
-[`../launcher/src/content.rs`](../launcher/src/content.rs).
+always writable ([`../installer/structure.md`](../installer/structure.md#elevation)). Run
+by hand from a build, it is wherever the built exe sits.
 
 ### Source layout
 
@@ -91,7 +78,6 @@ listener/
       mod.rs       <- cfg selects one of the two below
       windows.rs   <- resident: hidden top-level window + GetMessage loop
       linux.rs     <- one-shot: udev handoff — placeholder, not built
-  output/          <- the deployed listener (see above)
 ```
 
 The decision itself is not in this crate at all: [`../trust/`](../trust/) is a workspace crate
@@ -340,12 +326,9 @@ same way.
   another — so they are serialised in practice, but nothing coordinates them. Two trusted
   cartridges plugged in together therefore do launch two launchers, which is the honest
   reading of what the user asked for. Deduplicating that is the launcher's business, not
-  this component's — but note that its mutex does **not** currently cover the cartridge
-  case: `runningDeployed()` in
-  [`../launcher/src/content.rs`](../launcher/src/content.rs) is what `main.rs` arms the
-  guard on, and it is true only when the exe's parent folder is named `output` — on a real
-  cartridge the exe sits at the volume root.
-  So nothing dedupes today. Left as a launcher-side issue rather than worked around here.
+  this component's — the launcher's single-instance mutex covers a second launch of the
+  *same* cartridge, but two different trusted cartridges plugged in together still launch
+  two launchers. Left as a launcher-side issue rather than worked around here.
 - **Re-arrival debounce.** *Settled: `settings::DEBOUNCE_SECONDS`, 5, keyed on drive letter.*
   Long enough to swallow the repeat events a flaky USB link produces, short enough that
   deliberately re-plugging a cartridge still works. Keyed on the letter rather than on the

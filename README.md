@@ -60,12 +60,6 @@ Romzeta/
                              SIL Open Font License 1.1
     structure.md     Developer reference for the cartridge side
     TODO.md          What's left to build on the cartridge side
-    output/          What ships on the cartridge:
-      launcher.exe     the app
-      games/           your game installs         (you drop these in)
-      assets/images/   cover art, 600x900          (you drop these in)
-      catalog.json     game list  (seeded from src/)
-      config.toml      settings   (seeded from src/)
   listener/          The PC-side app (Windows built, Linux not started)
     src/
       main.rs        Entry point, --check and --signature handling
@@ -78,9 +72,6 @@ Romzeta/
         windows.rs   Resident: hidden window + WM_DEVICECHANGE
         linux.rs     One-shot udev handoff — placeholder, not built
     build.rs         Bakes keys/*.pub in as the keys it trusts
-    output/          The deployed listener — what you actually run
-      listener.exe   The program
-      listener.log   What it did, and why it ignored what it ignored
     README.md        What the listener is, in short
     structure.md     Spec for the PC-side listener — including the two
                      execution models (resident on Windows, one-shot on Linux)
@@ -114,27 +105,27 @@ Romzeta/
 
 ### The launcher (cartridge)
 
-1. **Build it** — from the launcher folder:
+1. **Build it**:
    ```sh
-   cargo run       # builds and runs in place, refreshing output/launcher.exe
-   # or
-   cargo build --release
+   cargo run -p xtask -- release
    ```
-   Running once creates `output/` and seeds `config.toml` + `catalog.json` if missing.
+   Running `launcher.exe` once creates its content folders beside itself and seeds
+   `config.toml` + `catalog.json` if missing.
 
-2. **Add your games** — into `output/`:
-   - Put each game's install under `output/games/…`.
-   - Put each cover image (600×900, 2:3) under `output/assets/images/…`.
-   - List them in `output/catalog.json`:
+2. **Add your games** — beside `launcher.exe`:
+   - Put each game's install under `games/…`.
+   - Put each cover image (600×900, 2:3) under `assets/images/…`.
+   - List them in `catalog.json`:
      ```json
      [
        { "name": "Elden Ring", "exe": "games/elden_ring/elden_ring.exe", "image": "assets/images/elden_ring.png" }
      ]
      ```
-     Paths are relative to `output/`. Your edits here are **never overwritten** by a rebuild.
+     Paths are relative to `launcher.exe`'s own folder. Your edits here are **never
+     overwritten** by a rebuild.
 
-3. **Ship it** — copy the `output/` folder onto the cartridge (any storage device: NVMe,
-   SSD, HDD, USB). `launcher.exe` and its content travel together.
+3. **Ship it** — copy `launcher.exe` and its content folder onto the cartridge (any storage
+   device: NVMe, SSD, HDD, USB). They travel together.
 
 ### The listener (PC) — *Windows works, Linux not started*
 
@@ -149,13 +140,13 @@ Until the installer ships, setting it up is manual:
    does not build at all: a listener with nothing to trust would accept nothing.
 2. `cargo run -p xtask -- release` — builds the launcher and the listener and **signs** them.
    The signature is what makes a drive a cartridge, so an unsigned launcher is ignored.
-3. `cd listener && cargo run --release -- --check .` — fills in `listener/output/` with
-   `listener.exe` and exits.
+3. `target\release\listener.exe --check .` — runs the core once by hand, to confirm it
+   works before relying on it.
 4. Copy the signed `launcher.exe` to the root of the drive, with its `catalog.json`,
    `config.toml`, `games/` and `assets/images/` beside it.
-5. Run `output\listener.exe`. It stays in the background — no window, no tray icon — and
-   starts the launcher when you plug the cartridge in. `output\listener.log`, right beside
-   it, says what it did.
+5. Run `listener.exe` from wherever you placed it. It stays in the background — no window,
+   no tray icon — and starts the launcher when you plug the cartridge in. `listener.log`,
+   right beside it, says what it did.
 
 There is nothing to pair. The listener accepts a cartridge when the `launcher.exe` at its root
 carries a signature from a key that listener was built with, and refuses everything else — so

@@ -63,8 +63,8 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
     let initScript = initScript(base_dir, &config, &games);
 
     // WebView2's user-data folder is the engine's only on-disk footprint. We
-    // point it at output/assets/, so the engine drops its (fixed-name)
-    // EBWebView cache folder in there beside the cover art rather than in the
+    // point it at assets/, so the engine drops its (fixed-name) EBWebView
+    // cache folder in there beside the cover art rather than in the
     // cartridge root. content::ensureLayout pre-creates it so it's present
     // from the first launch.
     //

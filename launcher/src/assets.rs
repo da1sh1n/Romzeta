@@ -32,7 +32,7 @@ struct UiAssets;
 /// takes one folder each, and the font lives in `launcher/assets/fonts/` rather
 /// than in `src/` beside the Rust sources.
 ///
-/// Embedded rather than shipped on the cartridge: a font in `output/` can be
+/// Embedded rather than shipped on the cartridge: a font beside the exe can be
 /// deleted or missed by a hand-copy, and the launcher would then silently fall
 /// back to a system face.
 #[derive(RustEmbed)]
@@ -48,7 +48,7 @@ struct FontAssets;
 /// The two fail differently: this one gates *both* paths, so a missing
 /// extension 404s the first time you run it. The rust-embed list gates only the
 /// deployed binary, where the 404 first appears on a cartridge — so test a
-/// change to either on the built `output/launcher.exe`, not just in dev.
+/// change to either on a built `launcher.exe`, not just in dev.
 ///
 /// `woff2` is absent because the font is answered from `FontAssets` before this
 /// gate is reached.

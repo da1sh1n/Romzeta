@@ -114,9 +114,7 @@ pub mod cli {
     }
 
     /// Prints this exe's signature block, or the word `unsigned`.
-    /// For a human checking a download by hand — nothing in Romzeta establishes
-    /// another program's identity by running it and reading this, because that
-    /// would mean executing the very binary you are still deciding about.
+    /// For a human checking a download by hand.
     pub fn printSignature() {
         match ownSignature() {
             // `print!`, not `println!`: a minisig block already ends in a newline.

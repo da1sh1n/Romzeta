@@ -9,7 +9,7 @@
 // launcher spawns it detached, once, right after a game starts.
 
 #![windows_subsystem = "windows"]
-#![allow(non_snake_case)]
+#![allow(non_snake_case)] // camelCase functions
 
 mod log;
 mod playtime;

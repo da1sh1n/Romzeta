@@ -4,15 +4,10 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-// Functions are camelCase in this project while variables stay snake_case,
-// which rustc's default lints object to. Silenced once, at the script's root.
-#![allow(non_snake_case)]
 
-//! Build script. Embeds FileDescription/ProductName so Task Manager shows
-//! "Romzeta Keeper" instead of the bare filename.
+#![allow(non_snake_case)] // camelCase functions
 
 // ########## EMBEDDING VERSION INFO ##########
-
 fn main() {
     embedResources();
 }

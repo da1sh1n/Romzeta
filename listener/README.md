@@ -39,12 +39,9 @@ src/
   trigger/
     windows.rs  resident: hidden top-level window + GetMessage loop
     linux.rs    one-shot: udev handoff — NOT BUILT YET
-output/        the deployed listener — this is what you ship
-  listener.exe
-  listener.log
 ```
 
-`output/` is refreshed by `cargo run`, exactly like the launcher's.
+The deployed listener is just `listener.exe` and `listener.log`, wherever the exe is.
 
 **There is no config file.** There used to be one holding the cartridge keys this
 PC trusted, plus a debounce window and a log path. The key list is gone because
@@ -57,18 +54,12 @@ them. See [`src/settings.rs`](src/settings.rs).
 ## Running it
 
 ```sh
-cargo run                              # start the trigger for this platform
-cargo run -- --check E:\               # run the core once against a volume, then exit
-cargo run --release -- --check E:\     # same, and deploys the release exe to output/
+listener.exe                    # start the trigger for this platform
+listener.exe --check E:\        # run the core once against a volume, then exit
 ```
 
 `--check` is the way to answer "would this cartridge launch on this PC?"
 without plugging anything in.
-
-`output/listener.exe` is refreshed by the exe that is *running*, so `cargo run`
-deploys a debug build and `cargo build --release` deploys nothing at all — it
-never runs anything. To put the shippable release build in `output/`, run it
-once: `cargo run --release -- --check .` deploys and exits immediately.
 
 Registering the Windows login entry and installing the Linux udev rule are the
 **installer's** job ([`../installer/structure.md`](../installer/structure.md)),

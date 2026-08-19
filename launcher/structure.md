@@ -19,18 +19,17 @@ served over a custom `app://` protocol straight from memory.
 
 ## Deployed layout
 
-Everything the launcher reads at runtime lives in an `output/` folder beside the exe:
+Everything the launcher reads at runtime lives beside the exe:
 
 ```text
-output/
-  launcher.exe     <- the program
-  config.toml      <- look and feel; seeded from a baked-in default if missing
-  catalog.json     <- the game list (name / exe / image); seeded likewise
-  assets/
-    images/        <- cover art (600x900, 2:3), dropped in by hand
-    EBWebView/     <- WebView2's own data folder (its only on-disk crumbs)
-  games/           <- the actual game installs
-  logs/            <- launcher.log (every launch attempt) + <game>/out.log, err.log
+launcher.exe     <- the program
+config.toml      <- look and feel; seeded from a baked-in default if missing
+catalog.json     <- the game list (name / exe / image); seeded likewise
+assets/
+  images/        <- cover art (600x900, 2:3), dropped in by hand
+  EBWebView/     <- WebView2's own data folder (its only on-disk crumbs)
+games/           <- the actual game installs
+logs/            <- launcher.log (every launch attempt) + <game>/out.log, err.log
 ```
 
 Nothing else. There is no identity file beside these: what makes the volume a cartridge is the
@@ -51,15 +50,9 @@ both prefixes. New cartridges get `assets/images/` because that is what the inst
 `catalog.json`, `assets/images/` and `games/` are **never overwritten** once present, so
 hand-dropped content survives every build.
 
-`config.toml` is the exception, because in the repo it has a master and on a cartridge it
-doesn't. Under `cargo run`, `launcher/src/config.toml` **is** the config and every run
-copies it over `output/config.toml` — edit it in `src/`, since edits to the copy are
-overwritten on the next run. On a deployed cartridge it is written once if missing and
-never touched again: whoever owns the cartridge owns its config, and an update must not
-restyle their launcher out from under them.
-
-Under `cargo run` the crate root (`launcher/`) *is* the base dir, so the deployed
-`output/` above corresponds to `launcher/output/` in the repo.
+`config.toml` is written once if missing and never touched again: whoever owns the
+cartridge owns its config, and an update must not restyle their launcher out from under
+them.
 
 ## Source layout
 
@@ -85,7 +78,7 @@ launcher/
     index.html     <- the UI's markup, embedded by rust-embed and served over app://
     style.css      <- its look, same
     app.js         <- its behaviour, same
-    config.toml    <- seed config, embedded via include_str! and written to output/
+    config.toml    <- seed config, embedded via include_str! and written beside the exe
     catalog.json   <- seed game list, same
   assets/
     fonts/
@@ -93,15 +86,14 @@ launcher/
   licenses/
     OFL-DepartureMono.txt <- required by the SIL Open Font License the face ships under
   structure.md
-  output/          <- the deployed cartridge content (see above)
 ```
 
-The font is **compiled into the exe, not shipped on the cartridge**. A font in `output/` is
-a file that can be deleted, missed by a hand-copy, or left behind when somebody moves a
+The font is **compiled into the exe, not shipped on the cartridge**. A font beside the exe
+is a file that can be deleted, missed by a hand-copy, or left behind when somebody moves a
 cartridge's contents, and the launcher would then quietly fall back to a system face.
 Compiled in, it is exactly as present as the code that asks for it — and it is the strongest
 form of "works with no network": there is nothing to fetch even in principle. That is why
-`assets/fonts/` exists in the repo but not under `output/`.
+`assets/fonts/` exists in the repo but not in the deployed content beside the exe.
 
 ### The 11px grid
 
@@ -151,7 +143,7 @@ rust-embed takes one folder each and the typeface does not belong beside the Rus
 list gates both paths, so a missing extension 404s in dev immediately. The rust-embed list
 gates only the deployed binary — under `cargo run` the dev path reads the file off disk and
 everything works, and the 404 turns up for the first time on a cartridge. Anything added to
-one list has to be tested on a built `output/launcher.exe`, not just in dev.
+one list has to be tested on a built `launcher.exe`, not just in dev.
 
 ## How it runs
 
@@ -168,9 +160,8 @@ one list has to be tested on a built `output/launcher.exe`, not just in dev.
   rebuild, falling back to the embedded copy on a deployed cartridge. Responses send
   `Cache-Control: no-store` so WebView2 never serves stale HTML/art.
 - **Single instance.** A Windows **named mutex** (`Local\Romzeta.CartridgeLauncher`),
-  not a socket. Enforced **only for the deployed exe** (its parent folder is named
-  `output/`); skipped under `cargo run` (exe in `target/`) so a rebuild always opens a
-  fresh window instead of silently no-opping on the held lock.
+  not a socket. Always acquired; a second launch exits immediately rather than opening a
+  second window on top of the first.
 - **Window sizing is deterministic.** `window.rs` computes the window size and the CSS
   obeys the same numbers — no measure-and-report round-trip. **Each cover wants to be its
   native 600x900**, and the window is built around whatever size the screen's caps leave it.
@@ -274,10 +265,6 @@ unparseable file) is logged and otherwise ignored.
 a launch that failed says nothing about what the player wants to play next. The write
 happens while the page runs its outro, so nothing waits on it.
 
-Under `cargo run` the config is mirrored from `src/config.toml` every run — but
-`content::mirrorSeedConfig` carries these three keys across, so the seed owns look and
-feel while the launcher owns the order in dev exactly as it does on a cartridge.
-
 ## Launching a game
 
 Clicking a cover posts `launch:<id>` over IPC. That is one of four messages the page can
@@ -299,7 +286,7 @@ follows is in `launch.rs`, and the guiding rule is that **"started" means the ga
 window is up** — the launcher closes itself on that signal, and closing while the game is
 still an invisible process makes a working launch look like a broken one.
 
-1. **Spawn.** `output/<game.exe>`, with the cwd set to **the exe's own folder** — games
+1. **Spawn.** `<game.exe>` beside `launcher.exe`, with the cwd set to **the exe's own folder** — games
    resolve their assets relative to themselves, and the wrong cwd fails in ways that look
    like corruption. stdout/stderr are redirected into `logs/<game>/`. Unless
    `show_console_window` is set, spawned with `CREATE_NO_WINDOW` so a console-mode exe
@@ -364,7 +351,7 @@ The launcher has no console, so `logs/` is the only place a failure can be expla
 ## Data files
 
 - **`catalog.json`** — an array of `{ name, exe, image }`. `exe` and `image` are paths
-  relative to `output/` (e.g. `games/bg3/bg3.exe`, `assets/images/bg3.png`). Injected into the
+  relative to `launcher.exe`'s own folder (e.g. `games/bg3/bg3.exe`, `assets/images/bg3.png`). Injected into the
   page as `window.__GAMES__` (fetching it would hit CORS) — rebuilt rather than passed
   through verbatim, so each entry can carry `available` (see *Launching a game*).
 - **`config.toml`** — real TOML, parsed with the `toml` crate. `config::load()` reads it
@@ -449,7 +436,7 @@ that check a signed, genuine launcher would happily start any executable on the 
   look / behaviour. `style.css` and `app.js` each carry a header naming the three spacing
   numbers they duplicate from `constants.rs`.
 - `launcher/src/config.toml`, `launcher/src/catalog.json` — the baked-in seeds copied
-  into `output/` on first run.
+  beside the exe on first run.
 - `launcher/Cargo.toml` — deps: `serde`, `serde_json`, `toml` (reading) and `toml_edit`
   (writing the three order keys back without disturbing the file), `rust-embed`
   (`include-exclude` feature), `tao`, `wry`, `windows-sys` (Windows only).

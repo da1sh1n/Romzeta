@@ -51,19 +51,11 @@ fn main() -> wry::Result<()> {
     let base_dir = content::resolveBaseDir();
     content::ensureLayout(&base_dir);
 
-    // Single-instance is enforced only for the shipped launcher (the exe in
-    // output/). Under `cargo run` it is deliberately skipped so a rebuild
-    // always opens a fresh window instead of silently exiting when an older
-    // run is still on screen holding the lock — the classic "my change did
-    // nothing" trap during development. Nothing listens on a port: the guard
-    // is a named mutex the OS releases when the process dies.
-    let _instance = if content::runningDeployed() {
-        match instance::acquire() {
-            Some(guard) => Some(guard),
-            None => return Ok(()),
-        }
-    } else {
-        None
+    // Single-instance: a named mutex the OS releases when the process dies.
+    // Nothing listens on a port.
+    let _instance = match instance::acquire() {
+        Some(guard) => Some(guard),
+        None => return Ok(()),
     };
 
     ui::run(&base_dir)

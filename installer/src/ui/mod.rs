@@ -14,15 +14,10 @@ mod games;
 mod listener;
 
 use crate::app::{App, Mode, Screen};
-use crate::cartridge;
 use crate::catalog::{self, Entry};
+use crate::constants::{BAD, GOOD, WARN};
 use crate::payload;
 use crate::volume::humanBytes;
-
-/// Warnings and blockers. Read against both the light and dark egui themes.
-pub const WARN: egui::Color32 = egui::Color32::from_rgb(0xe0, 0xb1, 0x3a);
-pub const BAD: egui::Color32 = egui::Color32::from_rgb(0xd1, 0x3a, 0x3a);
-pub const GOOD: egui::Color32 = egui::Color32::from_rgb(0x5c, 0xb8, 0x5c);
 
 /// Look and feel, applied once before the first frame.
 ///
@@ -391,7 +386,7 @@ fn review(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(12.0);
 
     // The free-space check is a precheck, not a guarantee — see
-    // cartridge::FREE_SPACE_SLACK. A mid-copy failure is still handled, and
+    // crate::constants::FREE_SPACE_SLACK. A mid-copy failure is still handled, and
     // rolls the cartridge back.
     let free = app.volume().map(|v| v.free_bytes).unwrap_or(0);
     ui.label(format!(
@@ -405,7 +400,7 @@ fn review(app: &mut App, ui: &mut egui::Ui) {
             format!(
                 "That is {} short, counting {} of headroom. Remove a game or use a bigger drive.",
                 humanBytes(short),
-                humanBytes(cartridge::FREE_SPACE_SLACK)
+                humanBytes(crate::constants::FREE_SPACE_SLACK)
             ),
         ),
         None => ui.colored_label(GOOD, "It fits."),

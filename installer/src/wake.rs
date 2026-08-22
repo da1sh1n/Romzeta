@@ -13,18 +13,9 @@
 use std::fs;
 use std::path::Path;
 use std::thread;
-use std::time::Duration;
 
 use crate::cartridge::Progress;
-
-/// Why three and not one: the first read can be answered from the OS cache
-/// while the disk underneath is still spinning up. A third one still coming
-/// back is what says the drive itself is awake and serving.
-pub const PROBES: u64 = 3;
-
-/// Long enough that the rounds are separate reads rather than one read and two
-/// echoes of it, short enough to stay under the eye.
-const PROBE_GAP: Duration = Duration::from_millis(200);
+use crate::constants::{PROBE_GAP, PROBES};
 
 /// Reads `root` [`PROBES`] times, stopping at the first round it cannot.
 ///

@@ -16,20 +16,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-/// The name `steam_api.dll` looks for, beside the executable it is loaded into.
-pub const APPID_FILE: &str = "steam_appid.txt";
-
-/// Steam's own install records, one `appmanifest_<appid>.acf` per installed game.
-const LIBRARY_DIR: &str = "steamapps";
-
-/// How far above the game folder to look for [`LIBRARY_DIR`]. The standard
-/// layout puts it two up (`<library>/steamapps/common/<game>`); the rest is
-/// slack for a game whose files sit a level deeper.
-const MAX_LIBRARY_DEPTH: usize = 4;
-
-/// A manifest is a couple of kilobytes. The cap is not a limit anyone reaches;
-/// it is what stops a file that is not really a manifest from being read whole.
-const MANIFEST_BYTES: usize = 64 * 1024;
+use crate::constants::{APPID_FILE, LIBRARY_DIR, MANIFEST_BYTES, MAX_LIBRARY_DEPTH};
 
 /// Where an id came from, so the screen can say so rather than making the user
 /// wonder where a number they did not type appeared from.

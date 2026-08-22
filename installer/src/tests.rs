@@ -43,7 +43,8 @@ mod payload {
 }
 
 mod font {
-    use crate::font::{FALLBACK, SYSTEM, definitions};
+    use crate::constants::{FALLBACK, SYSTEM};
+    use crate::font::definitions;
     use egui::FontFamily;
 
     /// epaint panics — `FontFamily::… is not bound to any fonts` — the first time
@@ -599,7 +600,7 @@ mod volume {
 
         // A file with the right name and nothing else — what running it used to
         // accept.
-        std::fs::write(dir.join(crate::cartridge::LAUNCHER_NAME), b"MZ not signed").expect("write");
+        std::fs::write(dir.join(crate::constants::LAUNCHER_NAME), b"MZ not signed").expect("write");
         assert_eq!(attestedLauncher(&dir), None);
 
         // A well-formed signature block from a key this build does not carry.
@@ -608,7 +609,7 @@ mod volume {
                          trusted comment: romzeta-launcher 9.9.9 2026-07-30\n\
                          AAAA==\n";
         let signed = sigblock::attach(b"MZ signed by someone else", signature);
-        std::fs::write(dir.join(crate::cartridge::LAUNCHER_NAME), signed).expect("write");
+        std::fs::write(dir.join(crate::constants::LAUNCHER_NAME), signed).expect("write");
         assert_eq!(attestedLauncher(&dir), None);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -669,7 +670,8 @@ mod volume {
 }
 
 mod wake {
-    use crate::wake::{PROBES, probe};
+    use crate::constants::PROBES;
+    use crate::wake::probe;
     use std::path::PathBuf;
 
     fn tempDir(name: &str) -> PathBuf {

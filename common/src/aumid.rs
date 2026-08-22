@@ -9,7 +9,7 @@
 
 // ########## APP USER MODEL ID ##########
 
-const AUMID: &str = "Romzeta";
+use crate::constants::AUMID;
 
 /// Call once, before any window or background work starts. Failure is not
 /// reported — a process that could not set its AUMID still runs correctly, it

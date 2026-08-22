@@ -20,17 +20,11 @@
 // which rustc's default lints object to. Silenced once, at the crate root.
 #![allow(non_snake_case)]
 
+pub mod constants;
+
 // ########## THE SIGNATURE BLOCK ##########
 
-/// Identifies the footer. Ten bytes exactly, which keeps the whole thing 16.
-const MAGIC: &[u8; 10] = b"ROMZETASIG";
-
-/// The only block format that exists. A block declaring anything else is left
-/// alone rather than guessed at, since a future format would move these fields.
-const FORMAT: u16 = 1;
-
-/// Size of the fixed footer: length (4) + format (2) + magic (10).
-pub const FOOTER_LEN: usize = 16;
+use crate::constants::{FOOTER_LEN, FORMAT, MAGIC};
 
 // ========== Reading ==========
 

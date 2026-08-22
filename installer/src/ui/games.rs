@@ -13,16 +13,11 @@
 use std::path::Path;
 
 use crate::app::{App, Details, Edit, KeeperState, Mode};
-use crate::image;
 use crate::steam::Found;
 use crate::version;
 use crate::volume::humanBytes;
 
-use super::{BAD, GOOD, WARN};
-
-/// Where to go to find an app id by hand. The site indexes every app on Steam,
-/// including the ones the store no longer lists.
-const STEAMDB_URL: &str = "https://steamdb.info";
+use crate::constants::{BAD, GOOD, STEAMDB_URL, WARN};
 
 pub fn screen(app: &mut App, ctx: &egui::Context, ui: &mut egui::Ui) {
     name(app, ui);
@@ -471,8 +466,8 @@ fn details(
             .on_hover_text(format!(
                 "{}×{} works best — the 2:3 shape the launcher lays out. Anything \
                  else is copied as it is, and shown at a different size to the rest.",
-                image::TARGET_WIDTH,
-                image::TARGET_HEIGHT
+                crate::constants::TARGET_WIDTH,
+                crate::constants::TARGET_HEIGHT
             ));
         match (&d.image, keeping) {
             (Some(path), _) => {

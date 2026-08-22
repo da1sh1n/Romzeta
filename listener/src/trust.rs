@@ -17,19 +17,13 @@ use std::path::{Path, PathBuf};
 
 use trust::Anchor;
 
+use crate::constants::LAUNCHER_NAME;
+
 // `ANCHORS: &[Anchor]`, written by build.rs from keys/*.pub and pasted in here
 // at compile time. Compiled in rather than read from disk: an anchor sitting in
 // a writable file beside the exe would let anything able to edit it grant
 // itself auto-run.
 include!(concat!(env!("OUT_DIR"), "/trust_anchors.rs"));
-
-/// The binary a cartridge is expected to carry, by name. Hardcoded per platform
-/// rather than named by the disk, so there is no attacker-supplied path to
-/// sandbox in the first place.
-#[cfg(windows)]
-pub const LAUNCHER_NAME: &str = "launcher.exe";
-#[cfg(not(windows))]
-pub const LAUNCHER_NAME: &str = "launcher";
 
 /// A launcher that verified, what vouched for it, and what it says it is.
 pub struct Trusted {
@@ -119,8 +113,8 @@ pub fn verifyLauncher(root: &Path) -> Result<Trusted, Refusal> {
     // pre-hashed signatures and would buy nothing here.
     let (file, bytes) = readLocked(&path).map_err(|e| Refusal::Unreadable(e.to_string()))?;
 
-    let attested =
-        trust::attest(&bytes, ANCHORS, trust::LAUNCHER_ROLE).map_err(Refusal::Signature)?;
+    let attested = trust::attest(&bytes, ANCHORS, trust::constants::LAUNCHER_ROLE)
+        .map_err(Refusal::Signature)?;
 
     Ok(Trusted {
         path,

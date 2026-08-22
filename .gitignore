@@ -24,3 +24,7 @@ keys/
 # whole tree and two files holding absolute paths from the machine that built
 # it — wrong for anyone else, and a large diff on every rebuild.
 graphify-out/
+
+# Local copy of the conventions that moved to ~/.claude/CLAUDE.md. Kept so the
+# rules survive if that file is lost, but they are no longer this repo's to ship.
+CLAUDE.md.bck

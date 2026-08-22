@@ -14,7 +14,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
-use crate::run::KEEPALIVE_INTERVAL_MS;
+use crate::constants::KEEPALIVE_INTERVAL_MS;
 
 pub struct Counter {
     path: PathBuf,
@@ -35,7 +35,8 @@ pub fn open(path: PathBuf) -> Counter {
 impl Counter {
     pub fn tick(&mut self) {
         self.seconds += (KEEPALIVE_INTERVAL_MS / 1000) as u32; // adds Interval seconds
-        if let Ok(mut file) = fs::File::create(&self.path) // open for write, truncating
+        if let Ok(mut file) = fs::File::create(&self.path)
+        // open for write, truncating
         {
             let _ = file.write_all(self.seconds.to_string().as_bytes()); // write the new value
             let _ = file.sync_all(); // flush to disk, so a read can see it

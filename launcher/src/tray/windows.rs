@@ -33,26 +33,14 @@ use windows_sys::Win32::UI::Shell::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CW_USEDEFAULT, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
     GetCursorPos, IDI_APPLICATION, LoadIconW, MF_STRING, RegisterClassW, SetForegroundWindow,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_CONTEXTMENU, WM_LBUTTONUP,
-    WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPED,
+    TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_CONTEXTMENU, WM_LBUTTONUP, WM_RBUTTONUP,
+    WNDCLASSW, WS_OVERLAPPED,
 };
 
 use common::utf16::wide;
 
+use crate::constants::{ID_MENU_EXIT, ID_MENU_OPEN, TRAY_ICON_UID, WINDOW_CLASS, WM_TRAYICON};
 use crate::ui::UserEvent;
-
-const WINDOW_CLASS: &str = "Romzeta.LauncherTray";
-
-/// `uID` `Shell_NotifyIconW` identifies this icon by. One tray icon per
-/// process, so any constant does.
-const TRAY_ICON_UID: u32 = 1;
-
-/// Custom message `Shell_NotifyIconW` delivers mouse activity through.
-/// `WM_APP` is the documented start of an application's own range.
-const WM_TRAYICON: u32 = WM_APP + 1;
-
-const ID_MENU_OPEN: u32 = 1;
-const ID_MENU_EXIT: u32 = 2;
 
 /// Everything the window procedure needs. Held in a thread-local rather than
 /// `GWLP_USERDATA`: the tray window, the launcher's own window and every

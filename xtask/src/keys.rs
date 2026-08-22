@@ -14,11 +14,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Overrides the secret key location. Holds a path, not a key.
-const KEY_VAR: &str = "ROMZETA_SIGNING_KEY";
-/// The password for it. Absent means the key is unencrypted, or that you will
-/// be asked at the prompt.
-const PASSWORD_VAR: &str = "ROMZETA_SIGNING_PASSWORD";
+use crate::constants::{KEY_VAR, PASSWORD_VAR};
 
 // ========== Public Keys ==========
 

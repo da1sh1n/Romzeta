@@ -11,6 +11,7 @@
 // ########## SIGNATURE BLOCK TESTS ##########
 
 // `crate::*` because these tests use the private `MAGIC` and `FORMAT` too.
+use crate::constants::FOOTER_LEN;
 use crate::*;
 
 const EXE: &[u8] = b"MZ\x90\x00 not really a PE, but neither is anything else here";

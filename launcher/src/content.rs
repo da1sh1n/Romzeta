@@ -13,10 +13,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Baked-in defaults so a fresh cartridge content folder can be seeded with
-/// no repo around (e.g. on a real cartridge).
-const DEFAULT_CONFIG: &str = include_str!("config.toml");
-const DEFAULT_CATALOG: &str = include_str!("catalog.json");
+use crate::constants::{DEFAULT_CATALOG, DEFAULT_CONFIG};
 
 /// The folder holding `launcher.exe` and all cartridge content: the exe's own
 /// parent folder.

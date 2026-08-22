@@ -17,21 +17,16 @@
 
 use std::ptr;
 
+use crate::constants::{REG_READ, REG_WRITE};
 use crate::utf16::wide;
 
 use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS};
 use windows_sys::Win32::System::Registry::{
-    HKEY, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
-    REG_VALUE_TYPE, RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteValueW, RegEnumValueW,
-    RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
+    HKEY, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE, RegCloseKey, RegCreateKeyExW,
+    RegDeleteKeyW, RegDeleteValueW, RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
 
 pub use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
-
-/// Access mask for a key that is only going to be read.
-pub const READ: u32 = KEY_QUERY_VALUE;
-/// Access mask for a key that is going to be written or have values deleted.
-pub const WRITE: u32 = KEY_SET_VALUE;
 
 /// An open key. RAII so that every early return closes it.
 pub struct Key(HKEY);
@@ -65,7 +60,7 @@ pub fn create(root: HKEY, path: &str) -> Result<Key, String> {
             0,
             ptr::null(),
             REG_OPTION_NON_VOLATILE,
-            KEY_QUERY_VALUE | KEY_SET_VALUE,
+            REG_READ | REG_WRITE,
             ptr::null(),
             &mut handle,
             ptr::null_mut(),

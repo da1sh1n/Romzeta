@@ -20,6 +20,7 @@
 // which rustc's default lints object to. Silenced once, at the crate root.
 #![allow(non_snake_case)]
 
+mod constants;
 mod keys;
 mod manifest;
 mod release;
@@ -31,18 +32,9 @@ mod tests;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use crate::constants::USAGE;
+
 // ########## THE COMMAND LINE ##########
-
-const USAGE: &str = "\
-Romzeta build tool.
-
-  cargo run -p xtask -- release          build and sign launcher, listener, installer
-  cargo run -p xtask -- keygen           generate a dev signing key -> keys/dev.pub
-  cargo run -p xtask -- keygen --release the one release key -> keys/romzeta.pub (committed)
-  cargo run -p xtask -- sign <exe>...    sign in place
-  cargo run -p xtask -- verify <exe>...  check against keys/romzeta.pub and keys/dev.pub
-  cargo run -p xtask -- version          show the project version and every crate's
-";
 
 fn main() -> ExitCode {
     let root = repoRoot();

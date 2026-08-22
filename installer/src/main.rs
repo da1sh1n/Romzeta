@@ -21,6 +21,7 @@ mod autoplay;
 mod cartridge;
 mod catalog;
 mod clipboard;
+mod constants;
 mod copy;
 mod detect;
 mod font;

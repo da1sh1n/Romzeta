@@ -14,14 +14,9 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::constants::{KEEPALIVE_INTERVAL_MS, PROCESS_CHECK_INTERVAL_MS};
 use crate::log::logLine;
 use crate::playtime;
-
-/// Disk-touch cadence in milliseconds.
-pub(crate) const KEEPALIVE_INTERVAL_MS: u64 = 10_000;
-
-/// Process-liveness check cadence in milliseconds.
-const PROCESS_CHECK_INTERVAL_MS: u64 = 30_000;
 
 pub fn run(base_dir: &Path, pid: u32, playtime_path: Option<PathBuf>) {
     let mut counter = playtime_path.map(playtime::open);
@@ -49,14 +44,17 @@ pub fn run(base_dir: &Path, pid: u32, playtime_path: Option<PathBuf>) {
         if Instant::now() >= next_process_check && !common::lease::processExists(pid) {
             break;
         }
-        
+
         keepAlive(base_dir, &mut counter);
         thread::sleep(keepalive_tick);
         next_process_check = next_process_check + process_check_tick;
     }
 
     if let Err(error) = common::lease::clearLease() {
-        logLine(base_dir, &format!("keeper failed to clear global lease: {error}"));
+        logLine(
+            base_dir,
+            &format!("keeper failed to clear global lease: {error}"),
+        );
     }
     logLine(base_dir, &format!("keeper stopped for pid {pid}"));
 }

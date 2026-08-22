@@ -14,31 +14,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// How much better the top score must be before it is treated as a clear
-/// winner. One depth level is worth [`DEPTH_PENALTY`], so this threshold means
-/// "shallower than the runner-up, or a better name match" — a rank the runner-up
-/// can't be within noise of.
-const CLEAR_WINNER_MARGIN: i64 = DEPTH_PENALTY;
-
-/// Cost of each folder level between the game root and the exe. The launcher of
-/// a game is near its root; its tools are buried.
-const DEPTH_PENALTY: i64 = 120;
-
-/// The exe is named after the folder it is in — by far the strongest signal.
-const EXACT_NAME_BONUS: i64 = 500;
-/// Weaker version of the same: the name contains the folder name or vice versa.
-const PARTIAL_NAME_BONUS: i64 = 200;
-
-/// Size contributes, but only as a tiebreak — capped so a 40 GB packed
-/// executable cannot outrank a correctly named one at the root.
-const MAX_SIZE_SCORE: i64 = 100;
-
-/// Stop walking below this depth. Nothing this deep in a game folder is the
-/// game, and it bounds the scan of a pathological tree.
-const MAX_DEPTH: usize = 8;
-
-/// A file this small is a stub or a shim, not a game binary.
-const MIN_PLAUSIBLE_BYTES: u64 = 16 * 1024;
+use crate::constants::{
+    CLEAR_WINNER_MARGIN, DEPTH_PENALTY, EXACT_NAME_BONUS, MAX_DEPTH, MAX_SIZE_SCORE,
+    MIN_PLAUSIBLE_BYTES, PARTIAL_NAME_BONUS,
+};
 
 /// One executable the walk found, with its path relative to the game folder.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -15,25 +15,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::autoplay;
+use crate::constants::{AUTOSTART_NAME, EXE_NAME, FOLDER, STALE_CONFIG_FILE};
 use crate::payload;
-
-pub const EXE_NAME: &str = if cfg!(windows) {
-    "listener.exe"
-} else {
-    "listener"
-};
-
-/// The config file earlier builds wrote. Nothing reads it any more; it is named
-/// here only so an upgrade can clear it away rather than leave a file behind
-/// that looks like it still configures something.
-const STALE_CONFIG_FILE: &str = "config.toml";
-
-/// The folder name, under `%LOCALAPPDATA%`.
-const FOLDER: &str = "Romzeta";
-
-/// Name of the `Run` value. Also what the user sees in Task Manager's Startup
-/// tab, so it is a product name and not an exe name.
-pub const AUTOSTART_NAME: &str = "Romzeta Listener";
 
 /// `%LOCALAPPDATA%\Romzeta` — the listener's home, and the only place this
 /// installer writes it.
@@ -269,15 +252,13 @@ mod platform {
 
     use common::utf16::fromWide;
 
+    use common::constants::{REG_READ, REG_WRITE};
     use common::reg::{self, HKEY_CURRENT_USER as HKCU};
 
-    /// Per-user autostart. The listener is resident on Windows — it has to be
-    /// running to hear `WM_DEVICECHANGE` — so something must start it at login.
-    /// `HKCU\…\Run` is the lightest thing that does, and it needs no admin.
-    const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+    use crate::constants::RUN_KEY;
 
     pub fn setAutostart(exe: &Path) -> Result<(), String> {
-        let key = reg::open(HKCU, RUN_KEY, reg::WRITE)
+        let key = reg::open(HKCU, RUN_KEY, REG_WRITE)
             .ok_or("The Windows Run key could not be opened.")?;
         // Quoted: `C:\Users\First Last\AppData\…` has a space in it whenever the
         // account name does, and an unquoted one is the classic "starts
@@ -291,7 +272,7 @@ mod platform {
     }
 
     pub fn clearAutostart() -> Result<(), String> {
-        let Some(key) = reg::open(HKCU, RUN_KEY, reg::WRITE) else {
+        let Some(key) = reg::open(HKCU, RUN_KEY, REG_WRITE) else {
             return Ok(()); // nothing to remove from
         };
         reg::deleteValue(&key, Some(super::AUTOSTART_NAME));
@@ -300,7 +281,7 @@ mod platform {
 
     /// What the `Run` entry currently points at, if anything.
     pub fn autostartTarget() -> Option<String> {
-        let key = reg::open(HKCU, RUN_KEY, reg::READ)?;
+        let key = reg::open(HKCU, RUN_KEY, REG_READ)?;
         reg::querySz(&key, Some(super::AUTOSTART_NAME))
     }
 

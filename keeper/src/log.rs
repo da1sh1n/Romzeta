@@ -16,6 +16,6 @@ pub fn logLine(base_dir: &Path, message: &str) {
     common::log::appendLine(
         &base_dir.join("logs").join("keeper.log"),
         message,
-        common::log::DEFAULT_MAX_LOG_BYTES,
+        common::constants::DEFAULT_MAX_LOG_BYTES,
     );
 }

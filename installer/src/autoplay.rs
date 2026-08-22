@@ -9,53 +9,19 @@
 
 // ########## AUTOPLAY SUPPRESSION ##########
 
-/// The AutoPlay event for "a drive with ordinary files on it just arrived".
-/// Named separately from the paths below because it is the thing being talked
-/// about; the paths are just where Windows keeps the answer.
-#[cfg(windows)]
-const CHOSEN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers\UserChosenExecuteHandlers\StorageOnArrival";
-
-/// The parallel key the Settings app reads to show the current selection.
-/// Writing only [`CHOSEN_KEY`] works, but leaves Settings displaying the old
-/// choice — which reads as the change not having taken.
-#[cfg(windows)]
-const DEFAULT_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers\EventHandlersDefaultSelection\StorageOnArrival";
-
-/// The handler that means "do nothing". A real registered handler
-/// (`HKLM\…\AutoplayHandlers\Handlers\MSTakeNoAction`, ProgID
-/// `Shell.AutoplaySpecial`), not an invented value — deleting the choice
-/// instead would fall back to the "ask me every time" popup, which is still a
-/// thing appearing over the launcher.
-#[cfg(windows)]
-const TAKE_NO_ACTION: &str = "MSTakeNoAction";
-
-/// Ours, and the only key outside AutoPlay's own that this program writes. What
-/// was there before we changed it is parked here so uninstalling can put it
-/// back — a setting silently changed and never restored is the kind of thing
-/// people find years later and cannot explain.
-#[cfg(windows)]
-const BACKUP_KEY: &str = r"Software\Romzeta\AutoPlay";
-
-#[cfg(windows)]
-const BACKUP_CHOSEN: &str = "PreviousChosen";
-#[cfg(windows)]
-const BACKUP_DEFAULT: &str = "PreviousDefault";
-
-/// Recorded when the value we are replacing was not set at all, so that
-/// restoring knows to delete rather than to write something back. A literal
-/// handler name could never collide with this, since handler names are registry
-/// key names.
-#[cfg(windows)]
-const NONE_SENTINEL: &str = "<none>";
-
 #[cfg(windows)]
 mod platform {
-    use super::*;
+    use common::constants::{REG_READ, REG_WRITE};
     use common::reg::{self, HKEY_CURRENT_USER as HKCU};
+
+    use crate::constants::{
+        BACKUP_CHOSEN, BACKUP_DEFAULT, BACKUP_KEY, CHOSEN_KEY, DEFAULT_KEY, NONE_SENTINEL,
+        TAKE_NO_ACTION,
+    };
 
     /// The handler AutoPlay will run for an arriving drive, if any is chosen.
     pub fn currentChoice() -> Option<String> {
-        let key = reg::open(HKCU, CHOSEN_KEY, reg::READ)?;
+        let key = reg::open(HKCU, CHOSEN_KEY, REG_READ)?;
         reg::querySz(&key, None).filter(|choice| !choice.is_empty())
     }
 
@@ -96,7 +62,7 @@ mod platform {
     }
 
     pub fn restore() -> Result<Vec<String>, String> {
-        let Some(backup) = reg::open(HKCU, BACKUP_KEY, reg::READ) else {
+        let Some(backup) = reg::open(HKCU, BACKUP_KEY, REG_READ) else {
             return Ok(Vec::new()); // never suppressed, so nothing to undo
         };
         let chosen = reg::querySz(&backup, Some(BACKUP_CHOSEN));
@@ -113,13 +79,13 @@ mod platform {
     }
 
     fn backedUp() -> bool {
-        reg::open(HKCU, BACKUP_KEY, reg::READ)
+        reg::open(HKCU, BACKUP_KEY, REG_READ)
             .and_then(|key| reg::querySz(&key, Some(BACKUP_CHOSEN)))
             .is_some()
     }
 
     fn read(path: &str) -> Option<String> {
-        let key = reg::open(HKCU, path, reg::READ)?;
+        let key = reg::open(HKCU, path, REG_READ)?;
         reg::querySz(&key, None).filter(|value| !value.is_empty())
     }
 
@@ -136,7 +102,7 @@ mod platform {
     fn putBack(path: &str, previous: Option<&str>) -> Result<(), String> {
         match previous {
             None | Some(NONE_SENTINEL) => {
-                if let Some(key) = reg::open(HKCU, path, reg::WRITE) {
+                if let Some(key) = reg::open(HKCU, path, REG_WRITE) {
                     reg::deleteValue(&key, None);
                 }
                 Ok(())

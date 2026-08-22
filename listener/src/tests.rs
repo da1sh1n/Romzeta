@@ -50,7 +50,8 @@ impl Drop for Scratch {
 
 mod trust {
     use super::Scratch;
-    use crate::trust::{ANCHORS, LAUNCHER_NAME, Refusal, verifyLauncher};
+    use crate::constants::LAUNCHER_NAME;
+    use crate::trust::{ANCHORS, Refusal, verifyLauncher};
     use std::fs;
 
     /// Shorthand for "refused for this signature reason".
@@ -194,15 +195,15 @@ mod version {
             let mut parts = comment.split_whitespace();
             (parts.next().unwrap(), parts.next().unwrap())
         };
-        assert_eq!(role, ::trust::LAUNCHER_ROLE);
+        assert_eq!(role, ::trust::constants::LAUNCHER_ROLE);
         assert_eq!(parse(version).map(|v| v.minor), Some(2));
     }
 }
 
 mod volume {
     use super::Scratch;
+    use crate::constants::LAUNCHER_NAME;
     use crate::log::Log;
-    use crate::trust;
     use crate::volume::{Announce, Outcome, handleVolume};
     use std::fs;
 
@@ -210,7 +211,7 @@ mod volume {
     fn fakeVolume(name: &str, launcher: Option<&[u8]>) -> Scratch {
         let dir = Scratch::new(&format!("volume-{name}"));
         if let Some(bytes) = launcher {
-            fs::write(dir.join(trust::LAUNCHER_NAME), bytes).expect("write launcher");
+            fs::write(dir.join(LAUNCHER_NAME), bytes).expect("write launcher");
         }
         dir
     }

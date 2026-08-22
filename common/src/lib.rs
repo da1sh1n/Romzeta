@@ -4,9 +4,9 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Crate root. Declares the shared modules: the AppUserModelID call, log
-//! writing, the cross-process game lease, UTC time, the `x.y.z` version type,
-//! the registry wrapper, and Win32 UTF-16 conversion.
+//! Crate root. Declares the shared modules: the crate's constants, the
+//! AppUserModelID call, log writing, the cross-process game lease, UTC time,
+//! the `x.y.z` version type, the registry wrapper, and Win32 UTF-16 conversion.
 
 // Functions are camelCase in this project while variables stay snake_case, which
 // is the opposite of what rustc expects. Silenced once, at the root, so no item
@@ -16,8 +16,9 @@
 // ########## SHARED PIECES ##########
 
 pub mod aumid;
-pub mod log;
+pub mod constants;
 pub mod lease;
+pub mod log;
 pub mod time;
 pub mod version;
 

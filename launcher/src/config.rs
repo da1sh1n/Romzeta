@@ -15,12 +15,11 @@ use std::path::Path;
 
 use crate::constants::*;
 use crate::log;
-use crate::order;
 
 // ========== The Settings Table ==========
 
 /// How one setting is read out of the TOML table, carrying its default.
-enum Kind {
+pub enum Kind {
     /// A `true` / `false`.
     Flag(bool),
     /// A non-negative CSS pixel count, written as an integer or a float.
@@ -42,168 +41,11 @@ enum Kind {
 
 /// One key `config.toml` can hold: its TOML name, the one-line description
 /// written above it in the file, and how its value is read.
-struct Setting {
-    name: &'static str,
-    description: &'static str,
-    kind: Kind,
+pub struct Setting {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub kind: Kind,
 }
-
-/// Every setting, in the order they appear in a config file. This is the single
-/// list: `Config::default` takes its defaults from it, `load` reads the file
-/// through it, and `syncDefaults` documents missing keys from it.
-const SETTINGS: &[Setting] = &[
-    Setting {
-        name: "show_captions",
-        description: "Show the selected game's name on one line under the row.",
-        kind: Kind::Flag(false),
-    },
-    Setting {
-        name: "border_gap",
-        description: "Empty space between the window edge and the covers, on all four sides.",
-        kind: Kind::Number(DEFAULT_BORDER_GAP),
-    },
-    Setting {
-        name: "image_gap",
-        description: "Gap between adjacent covers.",
-        kind: Kind::Number(DEFAULT_IMAGE_GAP),
-    },
-    Setting {
-        name: "corner_radius",
-        description: "How rounded each cover's corners are (0 = square).",
-        kind: Kind::Number(DEFAULT_CORNER_RADIUS),
-    },
-    Setting {
-        name: "window_corner_radius",
-        description: "How rounded the window's own corners are (0 = square).",
-        kind: Kind::Number(DEFAULT_WINDOW_CORNER_RADIUS),
-    },
-    Setting {
-        name: "primary_color",
-        description: "60% of the palette: the window behind everything.",
-        kind: Kind::Color(DEFAULT_PRIMARY_COLOR),
-    },
-    Setting {
-        name: "secondary_color",
-        description: "30%: shadows, borders, and the plate behind missing cover art.",
-        kind: Kind::Color(DEFAULT_SECONDARY_COLOR),
-    },
-    Setting {
-        name: "accent_color",
-        description: "10%: text, the selected cover, and the close button.",
-        kind: Kind::Color(DEFAULT_ACCENT_COLOR),
-    },
-    Setting {
-        name: "shadow_size",
-        description: "How far the shadow reaches out from the cover edge.",
-        kind: Kind::Number(DEFAULT_SHADOW_SIZE),
-    },
-    Setting {
-        name: "shadow_fade",
-        description: "Solid color for this many px before the shadow starts fading.",
-        kind: Kind::Number(DEFAULT_SHADOW_FADE),
-    },
-    Setting {
-        name: "overlay_color",
-        description: "Screen darkening while the chosen game starts up.",
-        kind: Kind::Color(DEFAULT_OVERLAY_COLOR),
-    },
-    Setting {
-        name: "loading_ring_color",
-        description: "Progress line under a game that's starting; blank derives it from \
-                      accent_color.",
-        kind: Kind::Color(DEFAULT_LOADING_RING_COLOR),
-    },
-    Setting {
-        name: "loading_text_color",
-        description: "Status line under the progress line; blank derives it from accent_color.",
-        kind: Kind::Color(DEFAULT_LOADING_TEXT_COLOR),
-    },
-    Setting {
-        name: "loading_text_gap",
-        description: "Pixels between the progress line and the text under it.",
-        kind: Kind::Number(DEFAULT_LOADING_TEXT_GAP),
-    },
-    Setting {
-        name: "error_border_color",
-        description: "Border color on a cover that failed to launch.",
-        kind: Kind::Color(DEFAULT_ERROR_BORDER_COLOR),
-    },
-    Setting {
-        name: "error_border_width",
-        description: "Width of that border.",
-        kind: Kind::Number(DEFAULT_ERROR_BORDER_WIDTH),
-    },
-    Setting {
-        name: "error_text_color",
-        description: "Color of the failure message under the cover.",
-        kind: Kind::Color(DEFAULT_ERROR_TEXT_COLOR),
-    },
-    Setting {
-        name: "missing_sign_color",
-        description: "Sign color over a game whose exe isn't on the cartridge.",
-        kind: Kind::Color(DEFAULT_MISSING_SIGN_COLOR),
-    },
-    Setting {
-        name: "missing_dim",
-        description: "Brightness multiplier for a missing game's cover (1 = untouched, \
-                      0 = black).",
-        kind: Kind::Number(DEFAULT_MISSING_DIM),
-    },
-    Setting {
-        name: "toolbar_color",
-        description: "Toolbar text and outlines; blank derives them from accent_color.",
-        kind: Kind::Color(DEFAULT_TOOLBAR_COLOR),
-    },
-    Setting {
-        name: "scrollbar_color",
-        description: "The bar under a row too long to fit; blank derives it from \
-                      secondary_color.",
-        kind: Kind::Color(DEFAULT_SCROLLBAR_COLOR),
-    },
-    Setting {
-        name: "cursor_color",
-        description: "The ring drawn in place of the mouse pointer; blank picks white or black \
-                      per cover.",
-        kind: Kind::Color(DEFAULT_CURSOR_COLOR),
-    },
-    Setting {
-        name: "background_effect",
-        description: "Movement behind the covers: \"simple\", \"particles\" or \"fog\".",
-        kind: Kind::OneOf(DEFAULT_BACKGROUND_EFFECT, &BACKGROUND_EFFECTS),
-    },
-    Setting {
-        name: "background_effect_color",
-        description: "What that movement is made of; blank derives it from the palette.",
-        kind: Kind::Color(DEFAULT_BACKGROUND_EFFECT_COLOR),
-    },
-    Setting {
-        name: "cover_opacity",
-        description: "How opaque a cover is while it isn't the one pointed at (1 = solid).",
-        kind: Kind::Unit(DEFAULT_COVER_OPACITY),
-    },
-    Setting {
-        name: "show_console_window",
-        // Off by default: a console game's window is ugly but harmless, and
-        // hiding it is one fewer thing between "chose a cover" and "game's on".
-        description: "Show the console window a console-mode game would normally open.",
-        kind: Kind::Flag(false),
-    },
-    Setting {
-        name: "order_mode",
-        description: "Cover order: \"usage\", \"alphabetic\", \"catalog\" or \"user\".",
-        kind: Kind::OneOf(DEFAULT_ORDER_MODE, &order::MODES),
-    },
-    Setting {
-        name: "usage_order",
-        description: "Most recently played first; the launcher keeps this up to date.",
-        kind: Kind::Ids,
-    },
-    Setting {
-        name: "user_order",
-        description: "Hand-arranged order, used when order_mode = \"user\".",
-        kind: Kind::Ids,
-    },
-];
 
 // ========== The Settings Themselves ==========
 

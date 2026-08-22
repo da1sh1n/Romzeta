@@ -14,10 +14,7 @@ use std::sync::Arc;
 
 use egui::{FontData, FontDefinitions, FontFamily};
 
-/// Keys into [`FontDefinitions::font_data`]. Names, not faces — what the desktop
-/// is actually using is decided at runtime and is nobody's business here.
-pub(crate) const SYSTEM: &str = "system-ui";
-pub(crate) const FALLBACK: &str = "ubuntu-light";
+use crate::constants::{FALLBACK, SYSTEM};
 
 /// What to hand [`egui::Context::set_fonts`], before the first frame.
 pub fn definitions() -> FontDefinitions {
@@ -118,8 +115,10 @@ fn faceFile(face: &str) -> Option<PathBuf> {
         (common::reg::HKEY_LOCAL_MACHINE, machineFontDir()),
         (common::reg::HKEY_CURRENT_USER, userFontDir()),
     ] {
-        let (Some(key), Some(dir)) = (common::reg::open(root, FONTS, common::reg::READ), dir)
-        else {
+        let (Some(key), Some(dir)) = (
+            common::reg::open(root, FONTS, common::constants::REG_READ),
+            dir,
+        ) else {
             continue;
         };
         let Some(value) = fontValue(&key, face) else {

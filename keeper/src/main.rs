@@ -11,6 +11,7 @@
 #![windows_subsystem = "windows"]
 #![allow(non_snake_case)] // camelCase functions
 
+mod constants;
 mod log;
 mod playtime;
 mod run;
@@ -18,11 +19,9 @@ mod run;
 #[cfg(windows)]
 mod window;
 
-// ########## ENTRY POINT ##########
+use crate::constants::{BASE_FLAG, PID_FLAG, PLAYTIME_FLAG};
 
-const PID_FLAG: &str = "--pid"; // The PID of the game process to keep alive. REQUIRED
-const BASE_FLAG: &str = "--base"; // The base directory of the game. REQUIRED
-const PLAYTIME_FLAG: &str = "--playtime"; // The path to the playtime file, if any. Optional.
+// ########## ENTRY POINT ##########
 
 fn main() {
     common::aumid::set();

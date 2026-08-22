@@ -13,8 +13,8 @@
 #![allow(non_snake_case)] // camelCase functions
 
 mod alert;
+mod constants;
 mod log;
-mod settings;
 mod trigger;
 mod trust;
 mod version;
@@ -77,7 +77,7 @@ fn main() {
 fn start() -> Log {
     let dir: PathBuf = resolveBaseDir();
     let _ = fs::create_dir_all(&dir);
-    Log::open(Some(settings::defaultLogPath(&dir)))
+    Log::open(Some(log::defaultLogPath(&dir)))
 }
 
 /// Reads the command line into a `Mode`. `--version`, `--signature` and

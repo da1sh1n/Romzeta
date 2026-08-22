@@ -27,7 +27,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use common::utf16::wide;
 
-const WINDOW_CLASS: &str = "Romzeta.KeeperWindow";
+use crate::constants::WINDOW_CLASS;
 
 /// Creates the hidden window on this thread, runs the keepalive loop on a
 /// background thread, and pumps messages until that thread posts `WM_QUIT` —

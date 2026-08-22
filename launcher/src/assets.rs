@@ -17,6 +17,8 @@ use std::path::Path;
 use rust_embed::RustEmbed;
 use wry::http::{Request, Response, header::CONTENT_TYPE};
 
+use crate::constants::UI_ASSET_EXTENSIONS;
+
 /// The UI assets, baked into the exe at compile time and served over the
 /// `app://` protocol at runtime. They live in `src/` beside the Rust source,
 /// so the include list keeps the Rust files and the seed files (config.toml,
@@ -39,20 +41,6 @@ struct UiAssets;
 #[folder = "assets/"]
 #[include = "fonts/*.woff2"]
 struct FontAssets;
-
-/// Extensions the `app://` protocol will serve as UI assets, mirroring the
-/// rust-embed include list above so the live-from-`src/` dev path cannot hand
-/// out the Rust sources or the seed files. Kept here rather than in
-/// `constants`, because the two lists are one rule and apart they drift.
-///
-/// The two fail differently: this one gates *both* paths, so a missing
-/// extension 404s the first time you run it. The rust-embed list gates only the
-/// deployed binary, where the 404 first appears on a cartridge — so test a
-/// change to either on a built `launcher.exe`, not just in dev.
-///
-/// `woff2` is absent because the font is answered from `FontAssets` before this
-/// gate is reached.
-const UI_ASSET_EXTENSIONS: [&str; 3] = ["html", "css", "js"];
 
 /// Serves the UI from the baked-in `src/` assets, and `images/...` /
 /// `games/...` straight from the content folder beside the exe, so paths in

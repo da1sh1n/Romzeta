@@ -37,45 +37,19 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     DBT_DEVTYP_VOLUME, DBTF_NET, DEV_BROADCAST_HDR, DEV_BROADCAST_VOLUME, DefWindowProcW,
     DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, MF_STRING,
     MSG, PostQuitMessage, RegisterClassW, SW_SHOWNORMAL, SetForegroundWindow, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_APP, WM_CONTEXTMENU, WM_DESTROY,
-    WM_DEVICECHANGE, WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPED,
+    TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_CONTEXTMENU, WM_DESTROY, WM_DEVICECHANGE,
+    WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPED,
 };
 
 use common::utf16::wide;
 
+use crate::constants::{
+    DEBOUNCE_SECONDS, ID_MENU_EXIT, ID_MENU_OPEN_LOG, INSTANCE_MUTEX, TRAY_ICON_RESOURCE,
+    TRAY_ICON_UID, WINDOW_CLASS, WM_TRAYICON,
+};
 use crate::log::Log;
+use crate::volume;
 use crate::volume::Announce;
-use crate::{settings, volume};
-
-/// The listener's mutex name, distinct from the launcher's
-/// `Local\Romzeta.CartridgeLauncher`. `Local\` scopes it to the login session,
-/// matching a `Run` entry's per-user lifetime.
-const INSTANCE_MUTEX: &str = r"Local\Romzeta.CartridgeListener";
-
-const WINDOW_CLASS: &str = "Romzeta.ListenerWindow";
-
-/// `uID` `Shell_NotifyIconW` identifies this icon by, alongside `hWnd`. One
-/// tray icon per process, so any constant does — it only has to be stable
-/// between the `NIM_ADD` in `addTrayIcon` and the `NIM_DELETE` on shutdown.
-const TRAY_ICON_UID: u32 = 1;
-
-/// The icon resource `build.rs` compiles in via `winres`, which assigns id
-/// `1` to the first (and only) `set_icon` call.
-///
-/// This is Win32's `MAKEINTRESOURCE`: an integer id passed where an `LPCWSTR`
-/// is expected, which the loader tells apart from a real string by its value
-/// being below 65536. `without_provenance` is the honest spelling of "this
-/// address is a token, not memory" — it must stay exactly 1, so `ptr::dangling`
-/// is not a substitute (that yields `align_of::<u16>()`, which is 2).
-const TRAY_ICON_RESOURCE: *const u16 = std::ptr::without_provenance(1);
-
-/// Custom message `Shell_NotifyIconW` delivers mouse activity on the tray
-/// icon through. `WM_APP` is the documented start of the range an
-/// application is free to define its own messages in.
-const WM_TRAYICON: u32 = WM_APP + 1;
-
-const ID_MENU_OPEN_LOG: u32 = 1;
-const ID_MENU_EXIT: u32 = 2;
 
 /// Everything the window procedure needs.
 ///
@@ -101,7 +75,7 @@ impl State {
     /// the volume) means reading and verifying it before deciding to skip it,
     /// which is most of the work the debounce exists to avoid.
     fn debounced(&mut self, letter: char) -> bool {
-        let window = Duration::from_secs(settings::DEBOUNCE_SECONDS);
+        let window = Duration::from_secs(DEBOUNCE_SECONDS);
         let now = Instant::now();
         if !window.is_zero()
             && let Some(previous) = self.recent.get(&letter)

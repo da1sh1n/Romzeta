@@ -12,7 +12,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-const LEASE_FILE: &str = "active_game_lease.txt";
+use crate::constants::LEASE_FILE;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Lease {
@@ -109,7 +109,10 @@ fn baseDir() -> PathBuf {
             return PathBuf::from(state_home).join("romzeta");
         }
         if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(".local").join("state").join("romzeta");
+            return PathBuf::from(home)
+                .join(".local")
+                .join("state")
+                .join("romzeta");
         }
     }
 

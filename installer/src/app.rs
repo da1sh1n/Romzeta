@@ -825,7 +825,8 @@ impl App {
             // there is no game list to lose.
             wake::probe(&root, report)?;
             let bytes = payload::launcher()?;
-            copy::bytes(&root.join(cartridge::LAUNCHER_NAME), &bytes).map_err(|e| e.message())?;
+            copy::bytes(&root.join(crate::constants::LAUNCHER_NAME), &bytes)
+                .map_err(|e| e.message())?;
             Ok(vec!["Updated launcher.exe".into()])
         });
     }
@@ -841,7 +842,8 @@ impl App {
         self.startListenerJob(ctx, "Updating the keeper", move |report| {
             wake::probe(&root, report)?;
             let bytes = payload::keeper()?;
-            copy::bytes(&root.join(cartridge::KEEPER_NAME), &bytes).map_err(|e| e.message())?;
+            copy::bytes(&root.join(crate::constants::KEEPER_NAME), &bytes)
+                .map_err(|e| e.message())?;
             Ok(vec!["Updated keeper.exe".into()])
         });
     }

@@ -18,10 +18,9 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use crate::constants::PROCESS_CHECK_INTERVAL_MS;
 use crate::log::Log;
 use crate::{alert, trust, version};
-
-const PROCESS_CHECK_INTERVAL_MS: u64 = 10_000;
 
 struct GateState {
     last_check: Option<Instant>,
@@ -134,7 +133,7 @@ pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
             log.line(&format!(
                 "{} verified: {} launcher {theirs}, signed by the {} key",
                 root.display(),
-                trust::LAUNCHER_NAME,
+                crate::constants::LAUNCHER_NAME,
                 launcher.anchor
             ));
         }

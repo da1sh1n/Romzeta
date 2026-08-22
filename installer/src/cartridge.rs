@@ -27,30 +27,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use crate::catalog::{self, Entry};
+use crate::constants::{CONFIG_FILE, FREE_SPACE_SLACK, KEEPER_NAME, LAUNCHER_NAME};
 use crate::copy;
 use crate::payload;
 use crate::steam;
-
-pub const CONFIG_FILE: &str = "config.toml";
-
-/// The launcher's filename on a Windows cartridge, and the file the listener
-/// looks for. Both sides hardcode it — see `../../listener/src/trust.rs`, which
-/// explains why letting the cartridge name its own binary was a liability
-/// rather than a feature.
-pub const LAUNCHER_NAME: &str = "launcher.exe";
-
-/// The launcher's detached keepalive worker, written beside it on the same
-/// cartridge — `keeper::spawn` finds it by looking next to whichever
-/// `launcher.exe` is currently running.
-pub const KEEPER_NAME: &str = "keeper.exe";
-
-/// Headroom demanded on top of the measured bytes before a copy is offered.
-///
-/// The measurement is a sum of file sizes, and what a filesystem actually
-/// consumes is that plus per-file slack, directory entries and whatever the
-/// volume's cluster size rounds each file up to. Filling a cartridge to the last
-/// byte also leaves the launcher no room for its log and WebView2 cache.
-pub const FREE_SPACE_SLACK: u64 = 256 * 1024 * 1024;
 
 /// A game being added, with everything already resolved: which folder, which exe
 /// inside it, which cover, and what it will be called on the cartridge.
@@ -186,7 +166,7 @@ pub fn apply(
     let total = plan.bytesToCopy().max(1);
     let mut done = 0u64;
 
-    for dir in [catalog::GAMES_DIR, catalog::IMAGES_DIR] {
+    for dir in [crate::constants::GAMES_DIR, crate::constants::IMAGES_DIR] {
         fs::create_dir_all(root.join(dir))
             .map_err(|e| format!("{}/ could not be created: {e}", dir))?;
     }
@@ -207,7 +187,7 @@ pub fn apply(
     let mut created: Vec<PathBuf> = Vec::new();
 
     for game in &plan.add {
-        let destination = root.join(catalog::GAMES_DIR).join(&game.slug);
+        let destination = root.join(crate::constants::GAMES_DIR).join(&game.slug);
         created.push(destination.clone());
 
         let result = copy::directory(&game.source, &destination, cancel, &mut |file, bytes| {
@@ -304,7 +284,7 @@ pub fn apply(
     // launcher applies to it on a real cartridge (../../launcher/src/content.rs).
     let config = root.join(CONFIG_FILE);
     if !config.exists()
-        && let Err(e) = copy::bytes(&config, payload::LAUNCHER_CONFIG)
+        && let Err(e) = copy::bytes(&config, crate::constants::LAUNCHER_CONFIG)
     {
         return Err(unwind(&created, e.message()));
     }

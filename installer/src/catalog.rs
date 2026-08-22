@@ -14,15 +14,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-pub const CATALOG_FILE: &str = "catalog.json";
-pub const GAMES_DIR: &str = "games";
-/// Cover art, under the cartridge's `assets/` folder alongside WebView2's own
-/// cache — so the root holds only what a person put there.
-///
-/// This was a bare `images/` and a cartridge written by an older installer
-/// still says so in its catalog. Nothing needs migrating: the launcher serves
-/// whatever path the catalog names, and accepts both prefixes.
-pub const IMAGES_DIR: &str = "assets/images";
+use crate::constants::{CATALOG_FILE, GAMES_DIR, IMAGES_DIR};
 
 /// One row of the catalog. Field names and types match the launcher's `Game`
 /// exactly; it is a hard error there if they don't.

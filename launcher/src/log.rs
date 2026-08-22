@@ -21,7 +21,7 @@ pub fn logLine(base: &Path, message: &str) {
     common::log::appendLine(
         &base.join("logs").join("launcher.log"),
         message,
-        common::log::DEFAULT_MAX_LOG_BYTES,
+        common::constants::DEFAULT_MAX_LOG_BYTES,
     );
 }
 

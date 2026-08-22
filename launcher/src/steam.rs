@@ -23,23 +23,8 @@ use std::time::Instant;
 use common::reg::{self, HKEY_CURRENT_USER as HKCU, HKEY_LOCAL_MACHINE as HKLM};
 
 #[cfg(windows)]
-use crate::constants::{STEAM_POLL, STEAM_WAIT};
+use crate::constants::{ACTIVE_KEY, MACHINE_KEYS, STEAM_POLL, STEAM_WAIT, USER_KEY};
 use crate::log;
-
-/// Where the client records itself for the current user. `SteamExe` here is a
-/// full path, written with forward slashes.
-#[cfg(windows)]
-const USER_KEY: &str = r"Software\Valve\Steam";
-
-/// The liveness key. This is what `steam_api.dll` itself reads to find the
-/// client, so polling it asks the handshake rather than guessing at it.
-#[cfg(windows)]
-const ACTIVE_KEY: &str = r"Software\Valve\Steam\ActiveProcess";
-
-/// Machine-wide fallbacks, for a profile that has never run Steam. The client
-/// is 32-bit, so on 64-bit Windows it lands under WOW6432Node.
-#[cfg(windows)]
-const MACHINE_KEYS: [&str; 2] = [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"];
 
 /// Starts Steam silently and blocks until it is ready to answer a game, or
 /// returns the one line to put under that game's cover. `Ok(())` also covers
@@ -115,7 +100,7 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
 /// which is the whole reason this waits rather than sleeping a fixed while.
 #[cfg(windows)]
 fn isReady() -> bool {
-    let Some(key) = reg::open(HKCU, ACTIVE_KEY, reg::READ) else {
+    let Some(key) = reg::open(HKCU, ACTIVE_KEY, common::constants::REG_READ) else {
         return false;
     };
     let pid = reg::queryDword(&key, Some("pid")).unwrap_or(0);
@@ -136,14 +121,14 @@ fn isReady() -> bool {
 /// moves between machines that keep Steam in different places.
 #[cfg(windows)]
 fn steamExe() -> Option<PathBuf> {
-    if let Some(key) = reg::open(HKCU, USER_KEY, reg::READ)
+    if let Some(key) = reg::open(HKCU, USER_KEY, common::constants::REG_READ)
         && let Some(exe) = reg::querySz(&key, Some("SteamExe"))
         && Path::new(&exe).is_file()
     {
         return Some(PathBuf::from(exe));
     }
     MACHINE_KEYS.iter().find_map(|path| {
-        let key = reg::open(HKLM, path, reg::READ)?;
+        let key = reg::open(HKLM, path, common::constants::REG_READ)?;
         let dir = reg::querySz(&key, Some("InstallPath"))?;
         let exe = PathBuf::from(dir).join("steam.exe");
         exe.is_file().then_some(exe)

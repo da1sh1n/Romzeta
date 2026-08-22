@@ -9,6 +9,7 @@
 
 // ########## TRUST TESTS ##########
 
+use crate::constants::*;
 use crate::*;
 
 const EXE: &[u8] = b"MZ\x90\x00 pretend this is a launcher";

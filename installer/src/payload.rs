@@ -21,20 +21,7 @@ include!(concat!(env!("OUT_DIR"), "/sizes.rs"));
 include!(concat!(env!("OUT_DIR"), "/launcher-version.rs"));
 include!(concat!(env!("OUT_DIR"), "/keeper-version.rs"));
 
-/// The cartridge's app, written to `<volume>/launcher.exe` — packed.
-///
-/// Unpacked, these bytes carry the minisign signature `xtask sign` appended
-/// before this crate was built, and that signature *is* the cartridge's
-/// identity. `build.rs` verifies it before packing, so an installer that would
-/// produce cartridges its own listener rejects cannot be built.
-const LAUNCHER_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/launcher.exe.z"));
-
-/// The PC-side service, written into the listener's install folder — packed.
-const LISTENER_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/listener.exe.z"));
-
-/// The launcher's detached keepalive worker, written to `<volume>/keeper.exe`
-/// beside it — packed.
-const KEEPER_EXE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/keeper.exe.z"));
+use crate::constants::{KEEPER_EXE, LAUNCHER_CONFIG, LAUNCHER_EXE, LISTENER_EXE};
 
 /// The launcher, ready to write.
 pub fn launcher() -> Result<Vec<u8>, String> {
@@ -70,19 +57,6 @@ fn unpack(name: &str, packed: &[u8], expected: u64) -> Result<Vec<u8>, String> {
     }
     Ok(bytes)
 }
-
-/// Seed for a new cartridge's `config.toml` — look and feel only, no key.
-pub const LAUNCHER_CONFIG: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/launcher-config.toml"));
-
-/// Seed for a cartridge's `catalog.json`. Never read: job 1 writes a catalog
-/// built from the games the user actually chose, and the launcher's seed is an
-/// empty list by design — a launcher must never invent games it can't run, so
-/// there is no example entry here to read the shape off either. Staged only so
-/// the two crates keep pointing at one file.
-#[allow(dead_code)]
-pub const LAUNCHER_CATALOG: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/launcher-catalog.json"));
 
 /// The payload slots that are empty, by name. Empty in a shipped installer means
 /// the build used the escape hatch; every action that would write one of these

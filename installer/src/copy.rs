@@ -14,9 +14,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Read/write unit. Large enough that the syscall overhead is irrelevant next to
-/// the disk, small enough that cancel is felt immediately even on slow USB.
-const CHUNK_BYTES: usize = 1024 * 1024;
+use crate::constants::CHUNK_BYTES;
 
 pub enum Error {
     /// The user pressed cancel. Not a failure — the caller unwinds and says so.

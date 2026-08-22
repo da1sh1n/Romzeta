@@ -10,6 +10,8 @@
 
 // ########## COVER ORDER ##########
 
+use crate::constants::MODES;
+
 /// A stored id list turned into a complete permutation of `0..count`.
 ///
 /// Anything out of range, or repeated, is dropped; then every id the list never
@@ -46,12 +48,6 @@ pub fn promote(stored: &[usize], count: usize, id: usize) -> Vec<usize> {
     }
     order
 }
-
-/// The four values `order_mode` can hold, and what each one means to the page.
-///
-/// Kept here rather than in `config` because the page's order control offers exactly
-/// this list: they are one set of names with two readers, not a config detail.
-pub const MODES: [&str; 4] = ["usage", "alphabetic", "catalog", "user"];
 
 /// Whether `name` is one of [`MODES`]. Used both when reading the config and
 /// when the page asks to change it — an unknown mode is left at the default

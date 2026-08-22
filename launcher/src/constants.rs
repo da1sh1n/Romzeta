@@ -4,15 +4,18 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Every tunable number in the crate: the defaults behind `config.toml`
-//! settings, the bounds a config cannot cross, and the timings it does not
-//! expose. Section headers name the module each belongs to.
+//! Every constant the crate owns: the settings table behind `config.toml`, the
+//! defaults it carries, the bounds a config cannot cross, the timings it does
+//! not expose, and the fixed names Windows is addressed by. Section headers
+//! name the module each belongs to.
 
-// ########## TUNABLE NUMBERS ##########
+// ########## LAUNCHER CONSTANTS ##########
 
 use std::time::Duration;
 
-// ── Window size (window.rs) ──────────────────────────────────────────────
+use crate::config::{Kind, Setting};
+
+// ========== Window Size (window.rs) ==========
 // Each cover wants to be its own native size. The window then wraps a row of
 // them: one margin on every side and nothing else. The cover row's top edge is
 // `border_gap` from the top of the window, its bottom edge `border_gap` from
@@ -63,7 +66,7 @@ pub const COVER_NATIVE_HEIGHT: f64 = 900.0;
 pub const FALLBACK_WINDOW_W: f64 = 1280.0;
 pub const FALLBACK_WINDOW_H: f64 = 800.0;
 
-// ── Look and feel (config.rs) ────────────────────────────────────────────
+// ========== Look And Feel (config.rs) ==========
 // Fallbacks for the knobs exposed in config.toml, used when a key is absent or
 // unusable. They match the values baked into src/style.css, so both sides of
 // the page agree without talking to each other. The seed in src/config.toml is
@@ -79,7 +82,7 @@ pub const FALLBACK_WINDOW_H: f64 = 800.0;
 // the art and one under 30 puts the toolbar on it. Nothing clamps that — a
 // cartridge is free to ask for a layout that doesn't work.
 
-// ── The palette: 60 / 30 / 10 ────────────────────────────────────────────
+// ========== The Palette: 60 / 30 / 10 ==========
 // Three colors carry the whole launcher, in the proportions the rule is named
 // for. Everything that is not cover art, and not one of the two semantic
 // states below, is one of these or a shade worked out from them.
@@ -153,7 +156,7 @@ pub const DEFAULT_SCROLLBAR_COLOR: &str = "";
 // color pins it to that instead, on every cover.
 pub const DEFAULT_CURSOR_COLOR: &str = "";
 
-// ── The moving background (backdrop.js) ──────────────────────────────────
+// ========== The Moving Background (backdrop.js) ==========
 
 /// The three the page knows how to draw. A value outside this list leaves
 /// `background_effect` at its default rather than picking one arbitrarily —
@@ -174,15 +177,19 @@ pub const DEFAULT_BACKGROUND_EFFECT_COLOR: &str = "";
 /// field behind shows through. A plain opacity: 1 is solid, 0 invisible.
 pub const DEFAULT_COVER_OPACITY: f64 = 0.9;
 
-// ── Cover order (order.rs, config.rs) ────────────────────────────────────
+// ========== Cover Order (order.rs, config.rs) ==========
 
-/// What `order_mode` is when the config doesn't say — see [`crate::order::MODES`]
-/// for the four it can hold. "usage" because the cover a player wants next is
-/// most often the one they had last, and until anything has been played it is
+/// The four values `order_mode` can hold. One set of names with two readers —
+/// the config and the page's order control.
+pub const MODES: [&str; 4] = ["usage", "alphabetic", "catalog", "user"];
+
+/// What `order_mode` is when the config doesn't say — see [`MODES`] for the
+/// four it can hold. "usage" because the cover a player wants next is most
+/// often the one they had last, and until anything has been played it is
 /// indistinguishable from plain catalog order.
 pub const DEFAULT_ORDER_MODE: &str = "usage";
 
-// ── Launch timings (ui.rs) ───────────────────────────────────────────────
+// ========== Launch Timings (ui.rs) ==========
 
 /// How long the loading state stays on screen after a launch has *failed*,
 /// measured from the click, before the page unwinds it and marks the cover.
@@ -205,7 +212,7 @@ pub const LAUNCH_HIDE_FALLBACK: Duration = Duration::from_millis(1200);
 /// looking at the covers. See [`crate::window::raise`].
 pub const TOPMOST_GRACE: Duration = Duration::from_millis(1500);
 
-// ── Starting a game (launch.rs) ──────────────────────────────────────────
+// ========== Starting A Game (launch.rs) ==========
 
 /// How long to wait for the game to put a window on screen before giving up on
 /// the question and assuming it's simply slow. A cold-start AAA game off a USB
@@ -225,7 +232,7 @@ pub const READY_CONFIRM: Duration = Duration::from_millis(400);
 /// How often the two windows above check whether the process is still there.
 pub const LIVENESS_POLL: Duration = Duration::from_millis(50);
 
-// ── Starting Steam (steam.rs) ────────────────────────────────────────────
+// ========== Starting Steam (steam.rs) ==========
 
 /// How long to wait for the Steam client to become able to answer a game,
 /// measured from the moment it was asked to start.
@@ -238,3 +245,222 @@ pub const STEAM_WAIT: Duration = Duration::from_secs(120);
 
 /// How often the wait above re-reads Steam's `ActiveProcess` key.
 pub const STEAM_POLL: Duration = Duration::from_millis(250);
+
+// ========== The Settings Table (config.rs) ==========
+
+/// Every setting, in the order they appear in a config file. This is the single
+/// list: `Config::default` takes its defaults from it, `load` reads the file
+/// through it, and `syncDefaults` documents missing keys from it.
+pub const SETTINGS: &[Setting] = &[
+    Setting {
+        name: "show_captions",
+        description: "Show the selected game's name on one line under the row.",
+        kind: Kind::Flag(false),
+    },
+    Setting {
+        name: "border_gap",
+        description: "Empty space between the window edge and the covers, on all four sides.",
+        kind: Kind::Number(DEFAULT_BORDER_GAP),
+    },
+    Setting {
+        name: "image_gap",
+        description: "Gap between adjacent covers.",
+        kind: Kind::Number(DEFAULT_IMAGE_GAP),
+    },
+    Setting {
+        name: "corner_radius",
+        description: "How rounded each cover's corners are (0 = square).",
+        kind: Kind::Number(DEFAULT_CORNER_RADIUS),
+    },
+    Setting {
+        name: "window_corner_radius",
+        description: "How rounded the window's own corners are (0 = square).",
+        kind: Kind::Number(DEFAULT_WINDOW_CORNER_RADIUS),
+    },
+    Setting {
+        name: "primary_color",
+        description: "60% of the palette: the window behind everything.",
+        kind: Kind::Color(DEFAULT_PRIMARY_COLOR),
+    },
+    Setting {
+        name: "secondary_color",
+        description: "30%: shadows, borders, and the plate behind missing cover art.",
+        kind: Kind::Color(DEFAULT_SECONDARY_COLOR),
+    },
+    Setting {
+        name: "accent_color",
+        description: "10%: text, the selected cover, and the close button.",
+        kind: Kind::Color(DEFAULT_ACCENT_COLOR),
+    },
+    Setting {
+        name: "shadow_size",
+        description: "How far the shadow reaches out from the cover edge.",
+        kind: Kind::Number(DEFAULT_SHADOW_SIZE),
+    },
+    Setting {
+        name: "shadow_fade",
+        description: "Solid color for this many px before the shadow starts fading.",
+        kind: Kind::Number(DEFAULT_SHADOW_FADE),
+    },
+    Setting {
+        name: "overlay_color",
+        description: "Screen darkening while the chosen game starts up.",
+        kind: Kind::Color(DEFAULT_OVERLAY_COLOR),
+    },
+    Setting {
+        name: "loading_ring_color",
+        description: "Progress line under a game that's starting; blank derives it from \
+                      accent_color.",
+        kind: Kind::Color(DEFAULT_LOADING_RING_COLOR),
+    },
+    Setting {
+        name: "loading_text_color",
+        description: "Status line under the progress line; blank derives it from accent_color.",
+        kind: Kind::Color(DEFAULT_LOADING_TEXT_COLOR),
+    },
+    Setting {
+        name: "loading_text_gap",
+        description: "Pixels between the progress line and the text under it.",
+        kind: Kind::Number(DEFAULT_LOADING_TEXT_GAP),
+    },
+    Setting {
+        name: "error_border_color",
+        description: "Border color on a cover that failed to launch.",
+        kind: Kind::Color(DEFAULT_ERROR_BORDER_COLOR),
+    },
+    Setting {
+        name: "error_border_width",
+        description: "Width of that border.",
+        kind: Kind::Number(DEFAULT_ERROR_BORDER_WIDTH),
+    },
+    Setting {
+        name: "error_text_color",
+        description: "Color of the failure message under the cover.",
+        kind: Kind::Color(DEFAULT_ERROR_TEXT_COLOR),
+    },
+    Setting {
+        name: "missing_sign_color",
+        description: "Sign color over a game whose exe isn't on the cartridge.",
+        kind: Kind::Color(DEFAULT_MISSING_SIGN_COLOR),
+    },
+    Setting {
+        name: "missing_dim",
+        description: "Brightness multiplier for a missing game's cover (1 = untouched, \
+                      0 = black).",
+        kind: Kind::Number(DEFAULT_MISSING_DIM),
+    },
+    Setting {
+        name: "toolbar_color",
+        description: "Toolbar text and outlines; blank derives them from accent_color.",
+        kind: Kind::Color(DEFAULT_TOOLBAR_COLOR),
+    },
+    Setting {
+        name: "scrollbar_color",
+        description: "The bar under a row too long to fit; blank derives it from \
+                      secondary_color.",
+        kind: Kind::Color(DEFAULT_SCROLLBAR_COLOR),
+    },
+    Setting {
+        name: "cursor_color",
+        description: "The ring drawn in place of the mouse pointer; blank picks white or black \
+                      per cover.",
+        kind: Kind::Color(DEFAULT_CURSOR_COLOR),
+    },
+    Setting {
+        name: "background_effect",
+        description: "Movement behind the covers: \"simple\", \"particles\" or \"fog\".",
+        kind: Kind::OneOf(DEFAULT_BACKGROUND_EFFECT, &BACKGROUND_EFFECTS),
+    },
+    Setting {
+        name: "background_effect_color",
+        description: "What that movement is made of; blank derives it from the palette.",
+        kind: Kind::Color(DEFAULT_BACKGROUND_EFFECT_COLOR),
+    },
+    Setting {
+        name: "cover_opacity",
+        description: "How opaque a cover is while it isn't the one pointed at (1 = solid).",
+        kind: Kind::Unit(DEFAULT_COVER_OPACITY),
+    },
+    Setting {
+        name: "show_console_window",
+        // Off by default: a console game's window is ugly but harmless, and
+        // hiding it is one fewer thing between "chose a cover" and "game's on".
+        description: "Show the console window a console-mode game would normally open.",
+        kind: Kind::Flag(false),
+    },
+    Setting {
+        name: "order_mode",
+        description: "Cover order: \"usage\", \"alphabetic\", \"catalog\" or \"user\".",
+        kind: Kind::OneOf(DEFAULT_ORDER_MODE, &MODES),
+    },
+    Setting {
+        name: "usage_order",
+        description: "Most recently played first; the launcher keeps this up to date.",
+        kind: Kind::Ids,
+    },
+    Setting {
+        name: "user_order",
+        description: "Hand-arranged order, used when order_mode = \"user\".",
+        kind: Kind::Ids,
+    },
+];
+
+// ========== The App:// Protocol (assets.rs) ==========
+
+/// Extensions the `app://` protocol will serve as UI assets, mirroring the
+/// rust-embed include list in [`crate::assets`] so the live-from-`src/` dev
+/// path cannot hand out the Rust sources or the seed files. The two lists are
+/// one rule: change either and the other has to follow.
+///
+/// The two fail differently: this one gates *both* paths, so a missing
+/// extension 404s the first time you run it. The rust-embed list gates only the
+/// deployed binary, where the 404 first appears on a cartridge — so test a
+/// change to either on a built `launcher.exe`, not just in dev.
+///
+/// `woff2` is absent because the font is answered from `FontAssets` before this
+/// gate is reached.
+pub const UI_ASSET_EXTENSIONS: [&str; 3] = ["html", "css", "js"];
+
+// ========== The Content Folder (content.rs) ==========
+
+/// Baked-in defaults so a fresh cartridge content folder can be seeded with
+/// no repo around (e.g. on a real cartridge).
+pub const DEFAULT_CONFIG: &str = include_str!("config.toml");
+pub const DEFAULT_CATALOG: &str = include_str!("catalog.json");
+
+// ========== Where Steam Lives (steam.rs) ==========
+
+/// Where the client records itself for the current user. `SteamExe` here is a
+/// full path, written with forward slashes.
+#[cfg(windows)]
+pub const USER_KEY: &str = r"Software\Valve\Steam";
+
+/// The liveness key. This is what `steam_api.dll` itself reads to find the
+/// client, so polling it asks the handshake rather than guessing at it.
+#[cfg(windows)]
+pub const ACTIVE_KEY: &str = r"Software\Valve\Steam\ActiveProcess";
+
+/// Machine-wide fallbacks, for a profile that has never run Steam. The client
+/// is 32-bit, so on 64-bit Windows it lands under WOW6432Node.
+#[cfg(windows)]
+pub const MACHINE_KEYS: [&str; 2] = [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"];
+
+// ========== The Tray Icon (tray/windows.rs) ==========
+
+#[cfg(windows)]
+pub const WINDOW_CLASS: &str = "Romzeta.LauncherTray";
+
+/// `uID` `Shell_NotifyIconW` identifies this icon by. One tray icon per
+/// process, so any constant does.
+#[cfg(windows)]
+pub const TRAY_ICON_UID: u32 = 1;
+
+/// Custom message `Shell_NotifyIconW` delivers mouse activity through.
+/// `WM_APP` is the documented start of an application's own range.
+#[cfg(windows)]
+pub const WM_TRAYICON: u32 = windows_sys::Win32::UI::WindowsAndMessaging::WM_APP + 1;
+
+#[cfg(windows)]
+pub const ID_MENU_OPEN: u32 = 1;
+#[cfg(windows)]
+pub const ID_MENU_EXIT: u32 = 2;

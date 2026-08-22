@@ -39,12 +39,12 @@ include!(concat!(env!("OUT_DIR"), "/trust_anchors.rs"));
 /// **Nothing is executed**: the version comes out of the signed comment, so no
 /// binary off a stranger's USB stick is ever run to find out what it is.
 pub fn attestedLauncher(root: &Path) -> Option<String> {
-    let path = root.join(crate::cartridge::LAUNCHER_NAME);
+    let path = root.join(crate::constants::LAUNCHER_NAME);
     if !path.is_file() {
         return None;
     }
     let bytes = std::fs::read(&path).ok()?;
-    trust::attest(&bytes, ANCHORS, trust::LAUNCHER_ROLE)
+    trust::attest(&bytes, ANCHORS, trust::constants::LAUNCHER_ROLE)
         .ok()
         .map(|attested| attested.version)
 }
@@ -55,12 +55,12 @@ pub fn attestedLauncher(root: &Path) -> Option<String> {
 /// keeper existed simply has no file here, which is `None` like every other
 /// case: the caller decides what that means.
 pub fn attestedKeeper(root: &Path) -> Option<String> {
-    let path = root.join(crate::cartridge::KEEPER_NAME);
+    let path = root.join(crate::constants::KEEPER_NAME);
     if !path.is_file() {
         return None;
     }
     let bytes = std::fs::read(&path).ok()?;
-    trust::attest(&bytes, ANCHORS, trust::KEEPER_ROLE)
+    trust::attest(&bytes, ANCHORS, trust::constants::KEEPER_ROLE)
         .ok()
         .map(|attested| attested.version)
 }
@@ -309,6 +309,8 @@ mod platform {
 
     use common::utf16::{fromWide, wide};
 
+    use crate::constants::EXTERNAL;
+
     use windows_sys::Win32::Foundation::{
         CloseHandle, ERROR_ACCESS_DENIED, ERROR_INVALID_NAME, ERROR_LABEL_TOO_LONG,
         ERROR_WRITE_PROTECT, GetLastError, INVALID_HANDLE_VALUE,
@@ -326,9 +328,6 @@ mod platform {
         STORAGE_PROPERTY_QUERY, StorageDeviceProperty,
     };
     use windows_sys::Win32::System::WindowsProgramming::{DRIVE_FIXED, DRIVE_REMOVABLE};
-
-    /// The buses that mean "the user can unplug this".
-    const EXTERNAL: [STORAGE_BUS_TYPE; 4] = [BusTypeUsb, BusType1394, BusTypeSd, BusTypeMmc];
 
     pub fn list() -> Vec<Volume> {
         let mask = unsafe { GetLogicalDrives() };

@@ -14,20 +14,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-/// The size the launcher's covers are laid out at, and the shape that follows
-/// from it. Quoted to the user by both the hint beside the picker and the
-/// warning below, so it is stated once here.
-pub const TARGET_WIDTH: u32 = 600;
-pub const TARGET_HEIGHT: u32 = 900;
-const TARGET_RATIO: f64 = TARGET_WIDTH as f64 / TARGET_HEIGHT as f64;
-
-/// How far off 2:3 a cover may be before it is worth mentioning. A percent or
-/// two is rounding in whatever tool produced the file.
-const RATIO_TOLERANCE: f64 = 0.02;
-
-/// Enough for every header this module understands, and for the JPEG segment
-/// walk to reach a real SOF marker in practice.
-const HEADER_BYTES: usize = 64 * 1024;
+use crate::constants::{HEADER_BYTES, RATIO_TOLERANCE, TARGET_HEIGHT, TARGET_RATIO, TARGET_WIDTH};
 
 /// Pixel dimensions of the image at `path`, or `None` if the format isn't one
 /// this recognises.

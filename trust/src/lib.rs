@@ -12,6 +12,8 @@
 // which rustc's default lints object to. Silenced once, at the crate root.
 #![allow(non_snake_case)]
 
+pub mod constants;
+
 // ########## THE TRUST DECISION ##########
 
 // ========== What A Build Accepts ==========
@@ -36,14 +38,6 @@ impl Anchor<'_> {
         minisign_verify::PublicKey::from_base64(self.base64).is_ok()
     }
 }
-
-/// The role names `xtask` writes into the trusted comment and `attest` matches
-/// against. Defined here, where both the signer and the checker can see them: a
-/// disagreement about this string makes a cartridge every listener ignores.
-pub const LAUNCHER_ROLE: &str = "romzeta-launcher";
-pub const LISTENER_ROLE: &str = "romzeta-listener";
-pub const INSTALLER_ROLE: &str = "romzeta-installer";
-pub const KEEPER_ROLE: &str = "romzeta-keeper";
 
 // ========== The Two Outcomes ==========
 

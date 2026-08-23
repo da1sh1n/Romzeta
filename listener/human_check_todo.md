@@ -7,7 +7,6 @@
 - [x] [`src/alert.rs`](src/alert.rs) — 63
 - [x] [`src/constants.rs`](src/constants.rs) — 67
 - [x] [`src/log.rs`](src/log.rs) — 91
-- [-] [`src/tests.rs`](src/tests.rs) — 255 (remain AI)
 - [x] [`src/trigger/linux.rs`](src/trigger/linux.rs) — 23
 - [x] [`src/trigger/mod.rs`](src/trigger/mod.rs) — 21
 - [ ] [`src/trigger/windows.rs`](src/trigger/windows.rs) — 522

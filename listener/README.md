@@ -33,7 +33,7 @@ src/
   volume.rs    the shared core — verify, then launch (used by both OSes)
   trust.rs     which file to check, holding it still, and saying why not
   version.rs   x.y.z, its own and a launcher's
-  settings.rs  the fixed tunables and where the log goes
+  constants.rs every constant the crate owns, in one file
   alert.rs     the one thing it ever says out loud
   log.rs       the activity log
   trigger/
@@ -49,7 +49,8 @@ trust is now cryptographic and compiled in — a list of trusted keys in a writa
 file beside the exe would let anything that could edit it grant itself auto-run on
 every insert, which is the exact capability the signature exists to deny. What
 was left was two tunables nobody has ever needed to change, so the file went with
-them. See [`src/settings.rs`](src/settings.rs).
+them; they live in [`src/constants.rs`](src/constants.rs) now, alongside every other
+constant the crate owns.
 
 ## Running it
 

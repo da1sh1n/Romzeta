@@ -30,6 +30,10 @@ Romzeta is made of three apps:
   installs the listener, and edits cartridges you already made. Everything else is carried
   inside it: no downloads, no prerequisites. *(Built and tried on real media.)*
 
+A fourth binary, **keeper**, ships on the cartridge beside the launcher but is not an app you
+open. The launcher starts one when a game starts, and it keeps the cartridge from going idle
+under a running game, records that game's playtime, and tells the listener a game is up.
+
 All three build and run on Windows. The manual setup below still works and is documented as
 the alternative to the installer.
 
@@ -46,10 +50,11 @@ Romzeta/
   launcher/          The cartridge-side app (Rust + webview)
     src/             App code, the UI, and the seed data files
       main.rs          Entry point; one file per job beside it (ui, launch,
-                       config, catalog, assets, window, log, constants, …)
+                       config, catalog, assets, window, log, constants,
+                       instance, keeper, steam, order, version, tray/, …)
       index.html       The UI's markup   (baked into the exe at build time)
       style.css        Its look          (same)
-      app.js           Its behaviour     (same)
+      app.js           Its behaviour — an ES module importing nine more (same)
       catalog.json     Seed game list — name, exe path, cover image
       config.toml      Seed look & feel
     assets/
@@ -66,7 +71,8 @@ Romzeta/
       volume.rs      The shared core: verify, then launch
       trust.rs       Which file to check, holding it still, and saying why not
       version.rs     x.y.z — its own, and a launcher's per its signature
-      settings.rs    The fixed tunables and where the log goes
+      constants.rs   Every constant the crate owns, in one file
+      alert.rs       The one thing it ever says out loud
       log.rs         The activity log
       trigger/       The only per-OS part
         windows.rs   Resident: hidden window + WM_DEVICECHANGE
@@ -89,12 +95,28 @@ Romzeta/
       volume.rs      Which drives can be cartridges, and which already are
                      (by verifying the launcher, never by running it)
       copy.rs        The cancellable, measured file copy
-      catalog.rs / image.rs / version.rs / work.rs
+      shell.rs       The window, the event loop, and the clipboard
+      catalog.rs / image.rs / version.rs / work.rs / constants.rs
+      autoplay.rs / clipboard.rs / font.rs / steam.rs / wake.rs
     structure.md     Reference for the setup side
     TODO.md          What's left — chiefly a run on real media
-  common/            Log plumbing, UTC dates, UTF-16 and the x.y.z contract,
-                     shared by all three programs and the build tool
-  Cargo.toml         Workspace tying the three crates together
+  keeper/            The keepalive worker that ships beside the launcher
+    src/
+      main.rs        Entry point: --pid, --base, --playtime
+      run.rs         The loop: touch the disk, tick playtime, hold the lease
+      playtime.rs    The per-game counter
+      window.rs      A hidden window, purely to carry the AUMID identity
+    TODO.md          The stats plan
+  common/            Log plumbing, UTC dates, UTF-16, the registry, the active-game
+                     lease and the x.y.z contract, shared by every program here
+  trust/             Verifying a signature and reading the role out of it
+  sigblock/          The appended ROMZETASIG footer: attach, read, strip
+  xtask/             The build tool: release, sign, verify, keygen, version
+  hardware/          The cartridge enclosure — FreeCAD model and notes
+  keys/              Trust anchors compiled into the listener at build time
+  Cargo.toml         Workspace tying every crate above together
+  SIGNING.md         The signing scheme, the roles, and the build order
+  CLAUDE.md          Repository rules for LLM-assisted work
   README.md          This file
   LICENSE            GNU GPL v3.0-or-later
 ```
@@ -164,12 +186,18 @@ The piece that makes all of the above unnecessary: one file that writes the cart
 sets up the listener for you. It carries the launcher, the listener and their seed files
 inside itself and downloads nothing.
 
-Build it in two steps — it embeds the other two binaries, so they have to exist first:
+One command. The installer embeds the other binaries, and every shipped binary has to be
+signed before it is embedded, so the order is not negotiable — `xtask` owns it:
 
 ```sh
-cargo build --release               # launcher + listener
-cargo build --release -p installer  # embeds what that produced
+cargo run -p xtask -- release
 ```
+
+That builds and signs `launcher.exe`, `listener.exe` and `keeper.exe`, then builds the
+installer around the signed launcher and listener and signs that too. Never produce a
+release artifact with a bare `cargo build --release`: an unsigned launcher is not a
+cartridge, and every listener will ignore it without saying why. See
+[SIGNING.md](SIGNING.md) §4.
 
 `target/release/installer.exe` then does three things:
 
@@ -178,8 +206,9 @@ cargo build --release -p installer  # embeds what that produced
   you and asks when it can't be sure), pick covers, and copy. A drive that is already a
   cartridge opens for editing instead: add games, remove games, change the key.
 - **Set up this PC** — installs the listener to `%LOCALAPPDATA%\Romzeta\`, where it keeps its
-  config and its log too. Pairs it with your cartridge's key, starts it, and registers it to
-  start at login. **Nothing in the installer asks for administrator**, this included.
+  log too. There is no config file — what a listener trusts is compiled into it. Pairs it
+  with your cartridge's key, starts it, and registers it to start at login. **Nothing in the
+  installer asks for administrator**, this included.
 - **Uninstall** — removes the folder *and* the login entry.
 
 See [installer/structure.md](installer/structure.md) for how it decides all of that.

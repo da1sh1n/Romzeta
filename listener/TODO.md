@@ -101,7 +101,7 @@ Deep mode changes how this process starts: a Scheduled Task at logon with highes
 of the `HKCU\…\Run` key, which is the standard way to autostart elevated without a UAC prompt at
 every login. The launcher inherits that token, and that is what puts layer V within reach.
 
-Record which mode we are in via [`src/settings.rs`](src/settings.rs) — the process needs to know
+Record which mode we are in via [`src/constants.rs`](src/constants.rs) — the process needs to know
 whether to advertise deep mode when the launcher asks.
 
 The installer is what writes it; see point 4 of [`../installer/TODO.md`](../installer/TODO.md).

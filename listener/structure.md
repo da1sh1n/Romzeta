@@ -49,7 +49,7 @@ listener.log   <- what it did, and why it ignored what it ignored
 
 Two files, and it used to be three: a `config.toml` held the cartridge keys this PC trusted.
 Trust is compiled in now, so there is nothing left for a config file to hold — see
-[Trust](#trust) and [`src/settings.rs`](src/settings.rs).
+[Trust](#trust) and [`src/constants.rs`](src/constants.rs).
 
 That folder is simply **wherever the exe is**. Installed, that is
 **`%LOCALAPPDATA%\Romzeta\`** and nowhere else — the installer has one location and no
@@ -71,7 +71,7 @@ listener/
     volume.rs      <- THE SHARED CORE: handleVolume(root, log)
     trust.rs       <- which file to check, holding it still, and saying why not
     version.rs     <- x.y.z: its own, and a launcher's as its signature states it
-    settings.rs    <- the fixed tunables and where the log goes
+    constants.rs   <- every constant the crate owns, in one file
     alert.rs       <- the one thing it ever says out loud
     log.rs         <- the activity log
     trigger/
@@ -301,10 +301,12 @@ how to find out what a given copy will accept without plugging anything in.
 
 ### Settings
 
-There are none to edit. The debounce window (5s, how long repeat arrivals for a drive letter
-already handled are ignored) and the log path are compiled in — see
-[`src/settings.rs`](src/settings.rs), whose module doc explains why a file that exists to be
-found, read and left alone is a file worth deleting.
+There are none to edit. The debounce window (5 s, how long repeat arrivals for a drive letter
+already handled are ignored) is `DEBOUNCE_MILLISECONDS` in
+[`src/constants.rs`](src/constants.rs), with every other constant the crate owns; the log path
+is decided in [`src/log.rs`](src/log.rs). Both are compiled in. A `settings.rs` used to hold
+exactly these two, and it went the way of the config file for the same reason: a file that
+exists to be found, read and left alone is a file worth deleting.
 
 The log defaults to `listener.log` **beside the exe**, so the listener's two files sit in one
 folder — for an installed listener that is `%LOCALAPPDATA%\Romzeta\`, which it can always
@@ -324,12 +326,17 @@ same way.
 - **Several volumes at once.** *Settled: handled independently, in bitmask order.* One event
   carrying several letters runs the core once per letter, on the message thread, one after
   another — so they are serialised in practice, but nothing coordinates them. Two trusted
-  cartridges plugged in together therefore do launch two launchers, which is the honest
-  reading of what the user asked for. Deduplicating that is the launcher's business, not
-  this component's — the launcher's single-instance mutex covers a second launch of the
-  *same* cartridge, but two different trusted cartridges plugged in together still launch
-  two launchers. Left as a launcher-side issue rather than worked around here.
-- **Re-arrival debounce.** *Settled: `settings::DEBOUNCE_SECONDS`, 5, keyed on drive letter.*
+  cartridges plugged in together therefore each get a launcher *started*, which is the honest
+  reading of what the user asked for. What happens next is the launcher's business, not this
+  component's — and today the launcher does not do what this section used to claim. Its
+  single-instance mutex is the fixed, process-wide name `Local\Romzeta.CartridgeLauncher`
+  ([`../launcher/src/instance.rs`](../launcher/src/instance.rs)) with no cartridge identity in
+  it, taken in `main` before the window exists. The second launcher therefore acquires
+  nothing and returns silently: two cartridges plugged in together yield **one** gallery, and
+  the second cartridge gives no sign it was seen at all. That is a launcher-side defect, not
+  something to work around here.
+- **Re-arrival debounce.** *Settled: `constants::DEBOUNCE_MILLISECONDS`, 5000, keyed on drive
+  letter.*
   Long enough to swallow the repeat events a flaky USB link produces, short enough that
   deliberately re-plugging a cartridge still works. Keyed on the letter rather than on the
   volume's contents, since deciding by contents means reading the volume before deciding to

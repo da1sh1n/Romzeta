@@ -23,6 +23,7 @@ Everything the launcher reads at runtime lives beside the exe:
 
 ```text
 launcher.exe     <- the program
+keeper.exe       <- its keepalive worker; spawned per game, never opened by hand
 config.toml      <- look and feel; seeded from a baked-in default if missing
 catalog.json     <- the game list (name / exe / image); seeded likewise
 assets/
@@ -32,7 +33,9 @@ games/           <- the actual game installs
 logs/            <- launcher.log (every launch attempt) + <game>/out.log, err.log
 ```
 
-Nothing else. There is no identity file beside these: what makes the volume a cartridge is the
+Nothing else. `keeper.exe` is written by the installer from the same payload and travels with
+the launcher; the launcher starts it and nothing else ever does. There is no identity file
+beside these: what makes the volume a cartridge is the
 signature carried **inside `launcher.exe` itself** (see [Role in cartridge
 identification](#role-in-cartridge-identification)).
 
@@ -72,12 +75,22 @@ launcher/
     window.rs      <- how big the window is and where it sits
     ui.rs          <- the window + webview, the IPC, and the event loop
     launch.rs      <- starting a game and deciding whether it came up
-    log.rs         <- logs/launcher.log and each game's own output
+    log.rs         <- each game's own out.log and err.log
     order.rs       <- what order the covers are shown in, and repairing a bad one
     instance.rs    <- the single-instance mutex
+    keeper.rs      <- spawning keeper.exe once a game is up, then letting go of it
+    steam.rs       <- bringing the Steam client up for games whose DRM needs it
+    version.rs     <- --version and --signature, answered before anything touches disk
+    tray/          <- the tray icon; cfg-gated, like the listener's trigger
+      mod.rs       <- cfg selects the one below, or a no-op everywhere else
+      windows.rs   <- Shell_NotifyIconW, the menu, and the restore message
+    tests.rs       <- the crate's own tests
     index.html     <- the UI's markup, embedded by rust-embed and served over app://
     style.css      <- its look, same
-    app.js         <- its behaviour, same
+    app.js         <- its behaviour: an ES module that imports the nine below
+    cards.js dom.js layout.js row.js arrange.js
+    launch.js theme.js cursor.js backdrop.js
+                   <- one concern each; only app.js is named by index.html
     config.toml    <- seed config, embedded via include_str! and written beside the exe
     catalog.json   <- seed game list, same
   assets/
@@ -304,6 +317,16 @@ still an invisible process makes a working launch look like a broken one.
    and into the page as `window.__launchOutcome(index, ok, message)`. On success the page
    plays its outro and asks to close; Rust also arms its own ~1.2 s deadline, so a broken
    page can't leave the launcher sitting in front of a running game.
+4. **Hand the game to the keeper.** On success, and only with a real pid, `ui.rs` calls
+   [`keeper::spawn`](src/keeper.rs), which starts `keeper.exe` — the sibling of whichever
+   `launcher.exe` is running, on a cartridge or under `cargo run` alike — detached, with
+   `--pid <the game> --base <content dir>`, plus `--playtime <file>` when there is one.
+   Spawned, never waited on: the launcher is about to close and the keeper has to outlive
+   it. From there the keeper owns the game — it writes the shared lease the listener reads
+   before letting another cartridge through, touches the cartridge on a timer so the disk
+   cannot idle out from under a running game, and ticks that game's playtime counter until
+   the pid is gone. A keeper that fails to start is logged and otherwise ignored: the game
+   is already up, which is what the player asked for.
 
 What the player sees, all of it driven by the page:
 

@@ -61,6 +61,7 @@ The installer carries its outputs inside itself, via `include_bytes!` / `rust-em
 ```text
 installer.exe
   ├─ launcher.exe      ← written onto the cartridge
+  ├─ keeper.exe        ← written onto the cartridge, beside the launcher
   ├─ listener.exe      ← written into the listener's install folder
   ├─ config.toml       ← cartridge seed, from launcher/src/config.toml
   └─ catalog.json      ← cartridge seed, from launcher/src/catalog.json
@@ -132,8 +133,8 @@ What follows from having no elevated path at all:
 
 `%LOCALAPPDATA%\Romzeta\` — `listener.exe` and `listener.log`, together.
 
-It is the same path `settings::fallbackLogPath` in
-[`../listener/src/settings.rs`](../listener/src/settings.rs) already names as the log's home,
+It is the same path `log::fallbackLogPath` in
+[`../listener/src/log.rs`](../listener/src/log.rs) already names as the log's home,
 so the install folder and the log folder are one folder rather than two that a paragraph had
 to reconcile. An installed listener never reaches that fallback at all: the primary path and
 the fallback resolve to the same file.
@@ -278,6 +279,7 @@ Matches the launcher's deployed layout
 ```text
 <volume>/
   launcher.exe     <- the app, from the embedded payload; the signature rides inside it
+  keeper.exe       <- its detached keepalive worker, from the same payload and signed too
   config.toml      <- look and feel only
   catalog.json     <- the game list the installer just built
   assets/images/   <- one cover per game

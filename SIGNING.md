@@ -62,7 +62,8 @@ everything else:
   renamed to `launcher.exe` is still genuinely signed. minisign authenticates a
   *trusted comment* alongside the payload (a second signature over
   `signature ‖ comment`), so the role written into it — `romzeta-launcher`,
-  `romzeta-listener`, `romzeta-installer` — is as unforgeable as the file itself.
+  `romzeta-listener`, `romzeta-keeper`, `romzeta-installer` — is as unforgeable as the
+  file itself.
   [trust/src/lib.rs](trust/src/lib.rs) is the one place that checks both, for
   every program that needs to.
 - **What this does not cover.** The signature is over `launcher.exe`'s own
@@ -180,8 +181,8 @@ itself.
 Four stages, and the dependencies between them are **not the kind cargo can
 see**:
 
-1. Build `launcher` and `listener`.
-2. **Sign them.** This rewrites the files cargo just produced.
+1. Build `launcher`, `listener` and `keeper`.
+2. **Sign all three.** This rewrites the files cargo just produced.
 3. Build `installer`, whose `build.rs` embeds those *now-signed* bytes.
 4. Sign the installer.
 
@@ -210,7 +211,7 @@ Two structural decisions back this up:
 ## 5. Commands
 
 ```
-cargo run -p xtask -- release          build and sign all three, in order
+cargo run -p xtask -- release          build and sign all four, in order
 cargo run -p xtask -- keygen           make a dev signing key (once per machine)
 cargo run -p xtask -- keygen --release make the one release key -> keys/romzeta.pub
 cargo run -p xtask -- sign <exe>...    sign in place

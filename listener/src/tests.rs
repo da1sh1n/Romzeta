@@ -29,7 +29,7 @@ impl Scratch {
         let dir =
             std::env::temp_dir().join(format!("romzeta-{name}-{}-{unique}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).expect("temp dir");
+        fs::create_dir_all(&dir).expect("could not create the scratch temp dir");
         Scratch(dir)
     }
 
@@ -76,7 +76,8 @@ mod trust {
     #[test]
     fn an_unsigned_launcher_is_refused() {
         let dir = Scratch::new("trust-unsigned");
-        fs::write(dir.join(LAUNCHER_NAME), b"MZ but nobody signed it").expect("write");
+        fs::write(dir.join(LAUNCHER_NAME), b"MZ but nobody signed it")
+            .expect("could not write the unsigned launcher fixture");
         assert!(refusedBecause(&dir, ::trust::Refusal::Unsigned));
     }
 
@@ -93,13 +94,13 @@ mod trust {
 
         let dir = Scratch::new("trust-lock");
         let path = dir.join("locked.bin");
-        fs::write(&path, b"MZ").expect("write");
+        fs::write(&path, b"MZ").expect("could not write the lock fixture");
 
         let _held = fs::OpenOptions::new()
             .read(true)
             .share_mode(FILE_SHARE_READ)
             .open(&path)
-            .expect("open with the same share mode verifyLauncher uses");
+            .expect("could not open the fixture with the share mode verifyLauncher uses");
 
         assert!(fs::read(&path).is_ok(), "a reader must still get in");
         assert!(
@@ -123,7 +124,8 @@ mod trust {
                          trusted comment: romzeta-launcher 9.9.9\n\
                          AAAA==\n";
         let signed = sigblock::attach(b"MZ signed by someone else", signature);
-        fs::write(dir.join(LAUNCHER_NAME), signed).expect("write");
+        fs::write(dir.join(LAUNCHER_NAME), signed)
+            .expect("could not write the stranger-signed launcher fixture");
 
         // Either it fails to decode or it fails to verify; both are refusals and
         // neither launches anything. What must never happen is Ok.
@@ -147,7 +149,8 @@ mod trust {
 }
 
 mod version {
-    use crate::version::{Version, own, parse};
+    use crate::version::own;
+    use common::version::{Version, parse};
 
     #[test]
     fn parses_a_bare_version() {
@@ -211,7 +214,8 @@ mod volume {
     fn fakeVolume(name: &str, launcher: Option<&[u8]>) -> Scratch {
         let dir = Scratch::new(&format!("volume-{name}"));
         if let Some(bytes) = launcher {
-            fs::write(dir.join(LAUNCHER_NAME), bytes).expect("write launcher");
+            fs::write(dir.join(LAUNCHER_NAME), bytes)
+                .expect("could not write the fake volume launcher");
         }
         dir
     }

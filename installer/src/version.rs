@@ -9,9 +9,7 @@
 
 // ########## VERSION AND COMMAND LINE ##########
 
-// Re-exported so the rest of the crate says `version::Version` without knowing
-// the definition is shared with the listener and the launcher.
-pub use common::version::{Version, parse};
+use common::version::{Version, parse};
 
 use crate::payload;
 

@@ -13,6 +13,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use common::version::Version;
+
 use crate::autoplay;
 use crate::cartridge::{self, EditedGame, Plan, PlannedGame};
 use crate::catalog::{self, Entry};
@@ -22,7 +24,7 @@ use crate::image;
 use crate::listener;
 use crate::payload;
 use crate::steam;
-use crate::version::{self, Version};
+use crate::version;
 use crate::volume::{self, Volume};
 use crate::wake;
 use crate::work::{Job, Scanning};
@@ -465,7 +467,10 @@ impl App {
                     // installer knows how to write", not "will these two
                     // programs still talk to each other".
                     self.staleLauncher = match (
-                        volume.launcher_version.as_deref().and_then(version::parse),
+                        volume
+                            .launcher_version
+                            .as_deref()
+                            .and_then(common::version::parse),
                         version::bundled(),
                     ) {
                         (Some(theirs), Some(ours)) if theirs != ours => Some(theirs),
@@ -478,7 +483,11 @@ impl App {
                     // `bundledKeeper()` is `None` under the payload-optional
                     // escape hatch, and there is nothing to install then.
                     self.staleKeeper = version::bundledKeeper().and_then(|ours| {
-                        match volume.keeper_version.as_deref().and_then(version::parse) {
+                        match volume
+                            .keeper_version
+                            .as_deref()
+                            .and_then(common::version::parse)
+                        {
                             Some(theirs) if theirs != ours => Some(KeeperState::Stale(theirs)),
                             Some(_) => None,
                             None => Some(KeeperState::Missing),

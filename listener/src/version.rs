@@ -9,21 +9,16 @@
 
 // ########## THIS LISTENER'S VERSION ##########
 
-// Re-exported rather than wrapped, so the rest of the crate says `version::parse`
-// and does not have to know the definition lives elsewhere.
-pub use common::version::{Version, parse};
+use common::version::{Version, parse};
 
 /// This listener's own version, read from its Cargo manifest at compile time.
 /// `Cargo.toml` is the only place it is written.
 pub fn own() -> Version {
-    // `env!` fails the build if the manifest has no version, so the only way
-    // this panics is a version Cargo accepted and we cannot parse.
-    parse(env!("CARGO_PKG_VERSION")).expect("our own version is a valid x.y.z")
+    parse(env!("CARGO_PKG_VERSION"))
+        .expect("CARGO_PKG_VERSION is not x.y.z: fix version in listener/Cargo.toml")
 }
 
-/// Prints the `--version` line: exactly `x.y.z`, no program name and no `v`.
-/// Every Romzeta exe prints the same shape, which is what keeps the human
-/// reading it and the parser reading it from drifting apart.
+/// Prints the `--version` line: `x.y.z`, no program name and no `v`.
 pub fn print() {
     println!("{}", own());
 }

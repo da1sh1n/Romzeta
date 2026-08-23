@@ -14,22 +14,21 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::constants::{KEEPALIVE_INTERVAL_MS, PROCESS_CHECK_INTERVAL_MS};
-use crate::log::logLine;
+use crate::constants::{KEEPALIVE_INTERVAL_MS, LOG_FILE, PROCESS_CHECK_INTERVAL_MS};
 use crate::playtime;
 
 pub fn run(base_dir: &Path, pid: u32, playtime_path: Option<PathBuf>) {
     let mut counter = playtime_path.map(playtime::open);
 
     if let Err(error) = common::lease::writeLease(pid, base_dir) {
-        logLine(
-            base_dir,
+        common::log::appendLine(
+            &base_dir.join(LOG_FILE),
             &format!("keeper failed to write global lease for pid {pid}: {error}"),
         );
     }
 
-    logLine(
-        base_dir,
+    common::log::appendLine(
+        &base_dir.join(LOG_FILE),
         &format!(
             "keeper started for pid {pid} (keepalive={}ms, check={}ms)",
             KEEPALIVE_INTERVAL_MS, PROCESS_CHECK_INTERVAL_MS
@@ -51,12 +50,15 @@ pub fn run(base_dir: &Path, pid: u32, playtime_path: Option<PathBuf>) {
     }
 
     if let Err(error) = common::lease::clearLease() {
-        logLine(
-            base_dir,
+        common::log::appendLine(
+            &base_dir.join(LOG_FILE),
             &format!("keeper failed to clear global lease: {error}"),
         );
     }
-    logLine(base_dir, &format!("keeper stopped for pid {pid}"));
+    common::log::appendLine(
+        &base_dir.join(LOG_FILE),
+        &format!("keeper stopped for pid {pid}"),
+    );
 }
 
 /// Keepalive: ticks the playtime counter if there is one, else lists the

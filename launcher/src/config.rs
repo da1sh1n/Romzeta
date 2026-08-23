@@ -14,7 +14,6 @@ use std::fs;
 use std::path::Path;
 
 use crate::constants::*;
-use crate::log;
 
 // ========== The Settings Table ==========
 
@@ -316,8 +315,8 @@ pub fn ids(list: &[usize]) -> toml_edit::Value {
 pub fn store(base_dir: &Path, key: &str, value: toml_edit::Value) {
     let path = base_dir.join("config.toml");
     let Ok(contents) = fs::read_to_string(&path) else {
-        log::logLine(
-            base_dir,
+        common::log::appendLine(
+            &base_dir.join(LOG_FILE),
             &format!("could not read config.toml to set {key}"),
         );
         return;
@@ -327,8 +326,8 @@ pub fn store(base_dir: &Path, key: &str, value: toml_edit::Value) {
     let Ok(mut doc) = contents.parse::<toml_edit::DocumentMut>() else {
         // The same file `load` gave up on and ran from defaults. Rewriting it
         // would mean guessing at what the author meant; leave it for them.
-        log::logLine(
-            base_dir,
+        common::log::appendLine(
+            &base_dir.join(LOG_FILE),
             &format!("config.toml is not valid TOML, leaving {key} unwritten"),
         );
         return;
@@ -354,8 +353,8 @@ pub fn store(base_dir: &Path, key: &str, value: toml_edit::Value) {
     }
 
     if let Err(error) = fs::write(&path, doc.to_string()) {
-        log::logLine(
-            base_dir,
+        common::log::appendLine(
+            &base_dir.join(LOG_FILE),
             &format!("could not write {key} to config.toml: {error}"),
         );
     }

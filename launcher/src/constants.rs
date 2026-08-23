@@ -212,6 +212,10 @@ pub const LAUNCH_HIDE_FALLBACK: Duration = Duration::from_millis(1200);
 /// looking at the covers. See [`crate::window::raise`].
 pub const TOPMOST_GRACE: Duration = Duration::from_millis(1500);
 
+// ========== The Log (log.rs) ==========
+
+pub const LOG_FILE: &str = "logs/launcher.log";
+
 // ========== Starting A Game (launch.rs) ==========
 
 /// How long to wait for the game to put a window on screen before giving up on

@@ -18,6 +18,10 @@ pub const BASE_FLAG: &str = "--base";
 /// The path to the playtime file, if any. Optional.
 pub const PLAYTIME_FLAG: &str = "--playtime";
 
+// ========== The Log (run.rs) ==========
+
+pub const LOG_FILE: &str = "logs/keeper.log";
+
 // ========== The Keepalive Loop (run.rs) ==========
 
 /// Disk-touch cadence in milliseconds.

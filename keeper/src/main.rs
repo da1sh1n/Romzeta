@@ -12,7 +12,6 @@
 #![allow(non_snake_case)] // camelCase functions
 
 mod constants;
-mod log;
 mod playtime;
 mod run;
 

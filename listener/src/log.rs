@@ -58,7 +58,7 @@ impl Log {
         let Some(path) = &self.path else {
             return;
         };
-        common::log::appendLine(path, message, common::constants::DEFAULT_MAX_LOG_BYTES);
+        common::log::appendLine(path, message);
     }
 }
 

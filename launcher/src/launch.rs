@@ -67,23 +67,26 @@ fn spawn(
     // check at the one place that actually spawns something is cheaper than a
     // second path from an untrusted `catalog.json` entry to a running process.
     if !catalog::isContained(&game.exe) {
-        log::logLine(
-            base,
+        common::log::appendLine(
+            &base.join(LOG_FILE),
             &format!("REFUSED {}: exe path escapes the cartridge", game.name),
         );
         return Err("Failed to start — game files missing".to_string());
     }
 
     let exe = base.join(&game.exe);
-    log::logLine(
-        base,
+    common::log::appendLine(
+        &base.join(LOG_FILE),
         &format!("launching {} ({})", game.name, exe.display()),
     );
 
     // Checked again here even though the catalog was screened at startup: the
     // cartridge is removable, and the file may be gone since.
     if !exe.is_file() {
-        log::logLine(base, &format!("FAILED {}: no such file", exe.display()));
+        common::log::appendLine(
+            &base.join(LOG_FILE),
+            &format!("FAILED {}: no such file", exe.display()),
+        );
         return Err("Failed to start — game files missing".to_string());
     }
 
@@ -100,14 +103,17 @@ fn spawn(
 
     match command.spawn() {
         Ok(child) => {
-            log::logLine(
-                base,
+            common::log::appendLine(
+                &base.join(LOG_FILE),
                 &format!("started pid {} in {}", child.id(), workdir.display()),
             );
             Ok(child)
         }
         Err(e) => {
-            log::logLine(base, &format!("FAILED {}: {e}", exe.display()));
+            common::log::appendLine(
+                &base.join(LOG_FILE),
+                &format!("FAILED {}: {e}", exe.display()),
+            );
             Err(format!("Failed to start — {}", shortReason(&e)))
         }
     }
@@ -124,7 +130,7 @@ fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
         // already dead when it was asked.
         Window::Ready => match outlives(&mut child, READY_CONFIRM) {
             None => {
-                log::logLine(base, &format!("{} is up", game.name));
+                common::log::appendLine(&base.join(LOG_FILE), &format!("{} is up", game.name));
                 Outcome::Started(pid)
             }
             Some(status) => finishedEarly(base, game, status, pid),
@@ -132,8 +138,8 @@ fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
         Window::TimedOut => {
             // Not a failure. Saying otherwise would punish slow games, and the
             // player can see for themselves whether one is coming up.
-            log::logLine(
-                base,
+            common::log::appendLine(
+                &base.join(LOG_FILE),
                 &format!(
                     "{} has no window yet after {WINDOW_WAIT_MS}ms; assuming slow start",
                     game.name
@@ -145,7 +151,7 @@ fn supervise(base: &Path, game: &Game, mut child: Child) -> Outcome {
         // ask on other platforms. Fall back to plain survival.
         Window::Unsupported => match outlives(&mut child, LIVENESS_GRACE) {
             None => {
-                log::logLine(base, &format!("{} is running", game.name));
+                common::log::appendLine(&base.join(LOG_FILE), &format!("{} is running", game.name));
                 Outcome::Started(pid)
             }
             Some(status) => finishedEarly(base, game, status, pid),
@@ -158,13 +164,16 @@ fn finishedEarly(base: &Path, game: &Game, status: std::process::ExitStatus, pid
     // Exit code 0 in the first couple of seconds is odd but not an error — a
     // stub that hands off to another process does exactly this.
     if status.success() {
-        log::logLine(base, &format!("{} exited immediately, cleanly", game.name));
+        common::log::appendLine(
+            &base.join(LOG_FILE),
+            &format!("{} exited immediately, cleanly", game.name),
+        );
         return Outcome::Started(pid);
     }
     // The exit code goes to the log, not under the cover: it means nothing to
     // a player, and a line long enough to wrap is worse than a short one.
-    log::logLine(
-        base,
+    common::log::appendLine(
+        &base.join(LOG_FILE),
         &format!("FAILED {}: exited immediately ({status})", game.name),
     );
     Outcome::Failed("Failed to start — closed immediately".to_string())

@@ -15,7 +15,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::log;
+use crate::constants::LOG_FILE;
 
 #[derive(Deserialize, Clone)]
 pub struct Game {
@@ -44,8 +44,8 @@ pub fn load(base_dir: &Path) -> Vec<Game> {
         .filter(|game| {
             let contained = isContained(&game.exe) && isContained(&game.image);
             if !contained {
-                log::logLine(
-                    base_dir,
+                common::log::appendLine(
+                    &base_dir.join(LOG_FILE),
                     &format!(
                         "REFUSED {}: catalog exe/image path escapes the cartridge \
                          (exe {:?}, image {:?})",
@@ -83,12 +83,10 @@ pub(crate) fn isContained(relative: &str) -> bool {
 /// installer's own `catalog::gameDir`, so a rename never moves it. `None` for
 /// a hand-edited or pre-`games/` catalog entry that isn't shaped this way.
 pub fn gameDir(base_dir: &Path, game: &Game) -> Option<PathBuf> {
-    let mut parts = Path::new(&game.exe)
-        .components()
-        .filter_map(|c| match c {
-            Component::Normal(part) => Some(part),
-            _ => None,
-        });
+    let mut parts = Path::new(&game.exe).components().filter_map(|c| match c {
+        Component::Normal(part) => Some(part),
+        _ => None,
+    });
     (parts.next()? == "games").then_some(())?;
     let slug = parts.next()?;
     Some(base_dir.join("games").join(slug))

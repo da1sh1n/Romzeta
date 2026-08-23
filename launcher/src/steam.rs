@@ -23,8 +23,7 @@ use std::time::Instant;
 use common::reg::{self, HKEY_CURRENT_USER as HKCU, HKEY_LOCAL_MACHINE as HKLM};
 
 #[cfg(windows)]
-use crate::constants::{ACTIVE_KEY, MACHINE_KEYS, STEAM_POLL, STEAM_WAIT, USER_KEY};
-use crate::log;
+use crate::constants::{ACTIVE_KEY, LOG_FILE, MACHINE_KEYS, STEAM_POLL, STEAM_WAIT, USER_KEY};
 
 /// Starts Steam silently and blocks until it is ready to answer a game, or
 /// returns the one line to put under that game's cover. `Ok(())` also covers
@@ -34,13 +33,13 @@ use crate::log;
 #[cfg(windows)]
 pub fn ensureRunning(base: &Path) -> Result<(), String> {
     if isReady() {
-        log::logLine(base, "steam is already up");
+        common::log::appendLine(&base.join(LOG_FILE), "steam is already up");
         return Ok(());
     }
 
     let Some(exe) = steamExe() else {
-        log::logLine(
-            base,
+        common::log::appendLine(
+            &base.join(LOG_FILE),
             "FAILED steam: no SteamExe or InstallPath in the registry",
         );
         return Err("Failed to start — Steam isn't installed".to_string());
@@ -48,8 +47,8 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
 
     // `-silent` is the whole point: Steam goes to the tray and never puts a
     // window in front of the launcher.
-    log::logLine(
-        base,
+    common::log::appendLine(
+        &base.join(LOG_FILE),
         &format!("starting steam silently ({})", exe.display()),
     );
     let mut command = Command::new(&exe);
@@ -65,7 +64,7 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
         // whether the client came up — `isReady` is the only answer.
         Ok(child) => drop(child),
         Err(e) => {
-            log::logLine(base, &format!("FAILED steam: {e}"));
+            common::log::appendLine(&base.join(LOG_FILE), &format!("FAILED steam: {e}"));
             return Err("Failed to start — Steam would not start".to_string());
         }
     }
@@ -73,11 +72,14 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
     let deadline = Instant::now() + STEAM_WAIT;
     loop {
         if isReady() {
-            log::logLine(base, "steam is up");
+            common::log::appendLine(&base.join(LOG_FILE), "steam is up");
             return Ok(());
         }
         if Instant::now() >= deadline {
-            log::logLine(base, "FAILED steam: still not ready after the wait");
+            common::log::appendLine(
+                &base.join(LOG_FILE),
+                "FAILED steam: still not ready after the wait",
+            );
             return Err("Failed to start — Steam didn't finish starting".to_string());
         }
         thread::sleep(STEAM_POLL);
@@ -89,7 +91,10 @@ pub fn ensureRunning(base: &Path) -> Result<(), String> {
 /// lets the player see why.
 #[cfg(not(windows))]
 pub fn ensureRunning(base: &Path) -> Result<(), String> {
-    log::logLine(base, "FAILED steam: only supported on Windows");
+    common::log::appendLine(
+        &base.join(LOG_FILE),
+        "FAILED steam: only supported on Windows",
+    );
     Err("Failed to start — Steam support needs Windows".to_string())
 }
 

@@ -31,7 +31,7 @@ use crate::catalog;
 use crate::config::Config;
 use crate::constants::*;
 use crate::window;
-use crate::{assets, config, keeper, launch, log, order, tray};
+use crate::{assets, config, keeper, launch, order, tray};
 
 /// `pub(crate)` so `tray::windows` can send `TrayRestoreRequested` back into
 /// this event loop.
@@ -107,7 +107,10 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
     // Before `proxy` is moved into the IPC handler below: the tray icon's
     // own window needs a clone to send `TrayRestoreRequested` back here.
     if !tray::init(proxy.clone()) {
-        log::logLine(base_dir, "failed to create the tray icon window; continuing without one");
+        common::log::appendLine(
+            &base_dir.join(LOG_FILE),
+            "failed to create the tray icon window; continuing without one",
+        );
     }
 
     let base_for_launch = base_dir.to_path_buf();
@@ -197,8 +200,8 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                 let (ok, message, pid, playtime) =
                     match launch::run(&base, &game, index, show_console_window) {
                         launch::Outcome::Started(pid) => {
-                            let playtime = catalog::gameDir(&base, &game)
-                                .map(|dir| dir.join("counter.txt"));
+                            let playtime =
+                                catalog::gameDir(&base, &game).map(|dir| dir.join("counter.txt"));
                             (true, String::new(), Some(pid), playtime)
                         }
                         launch::Outcome::Failed(message) => (false, message, None, None),
@@ -270,9 +273,11 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
                             if let Err(error) =
                                 keeper::spawn(&base_for_usage, pid, playtime.as_deref())
                             {
-                                log::logLine(
-                                    &base_for_usage,
-                                    &format!("failed to start detached keeper for pid {pid}: {error}"),
+                                common::log::appendLine(
+                                    &base_for_usage.join(LOG_FILE),
+                                    &format!(
+                                        "failed to start detached keeper for pid {pid}: {error}"
+                                    ),
                                 );
                             }
                         }
@@ -320,7 +325,10 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
             topmost_until = None;
             window::hide(&window);
             if !tray::show() {
-                log::logLine(&base_for_usage, "failed to add the tray icon; continuing without one");
+                common::log::appendLine(
+                    &base_for_usage.join(LOG_FILE),
+                    "failed to add the tray icon; continuing without one",
+                );
             }
             // Off screen is the only moment the outro can be torn down without
             // being seen unwinding.

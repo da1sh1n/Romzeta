@@ -15,16 +15,6 @@ use std::process::Stdio;
 
 use crate::catalog::Game;
 
-/// Appends one timestamped line to `logs/launcher.log` under `base`. Errors are
-/// ignored, and the file is truncated once it grows too large.
-pub fn logLine(base: &Path, message: &str) {
-    common::log::appendLine(
-        &base.join("logs").join("launcher.log"),
-        message,
-        common::constants::DEFAULT_MAX_LOG_BYTES,
-    );
-}
-
 /// Fresh stdout/stderr files for `game`, so a game that prints why it died
 /// leaves that behind. Truncated per launch, so what is in them is always the
 /// current run.

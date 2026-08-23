@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 publish = false
@@ -33,3 +33,8 @@ toml = "0.9.8"
 # A hidden prompt for the signing key's password. Only reached when neither the
 # environment nor .env supplies one.
 rpassword = "7.4.0"
+
+# The test harness every crate's tests/ folder runs on. Dev-only: xtask is
+# already never shipped, and this is not linked into it either.
+[dev-dependencies]
+testkit = { path = "../testkit" }

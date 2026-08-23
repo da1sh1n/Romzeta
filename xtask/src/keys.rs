@@ -285,7 +285,7 @@ pub fn keygen(root: &Path, release: bool) -> Result<(), String> {
 /// The check is on the *parent* directory, because the key does not exist yet
 /// and `canonicalize` needs something real to resolve. A repo root that will
 /// not canonicalize fails closed too.
-pub(crate) fn refuseInsideRepo(root: &Path, secret: &Path) -> Result<(), String> {
+pub fn refuseInsideRepo(root: &Path, secret: &Path) -> Result<(), String> {
     let parent = secret.parent().unwrap_or(Path::new("."));
     // Created first so `canonicalize` below has a real directory to resolve.
     let _ = fs::create_dir_all(parent);

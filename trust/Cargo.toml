@@ -1,6 +1,6 @@
 [package]
 name = "trust"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -20,4 +20,8 @@ minisign-verify = "0.2.5"
 # worth something if the thing that signs is the reference implementation
 # rather than a second opinion from the same crate that verifies.
 [dev-dependencies]
+# The test harness every crate's tests/ folder runs on. Dev-only: never linked
+# into anything that ships.
+testkit = { path = "../testkit" }
+
 minisign = "0.9.1"

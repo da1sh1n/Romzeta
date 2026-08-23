@@ -47,10 +47,14 @@ fn nowSeconds() -> u64 {
 
 /// Turns days since the Unix epoch into `(year, month, day)`.
 ///
+/// `pub` for the tests in `tests/time.rs`: the dates worth proving — the
+/// epoch, the March pivot, a leap day, a date before 1970 — cannot be reached
+/// through `today()`, which only ever asks about now.
+///
 /// Howard Hinnant's `civil_from_days`: it shifts the year to begin in March so
 /// the leap day lands at the very end, which collapses the month-length table
 /// into plain arithmetic. Correct for every date the epoch can express.
-fn civilFromDays(days: i64) -> (i64, u32, u32) {
+pub fn civilFromDays(days: i64) -> (i64, u32, u32) {
     // Re-base onto 0000-03-01, the start of a 400-year cycle.
     let z = days + 719_468;
     // Which 400-year cycle, and how far into it. `div_euclid`/`rem_euclid`
@@ -70,33 +74,4 @@ fn civilFromDays(days: i64) -> (i64, u32, u32) {
     // January and February sit at the end of the shifted year, so they belong
     // to the next calendar one.
     (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn known_dates_round_trip() {
-        // Day 0 is the epoch itself, and the three after it are the boundaries
-        // the March-based shift is most likely to get wrong.
-        assert_eq!(civilFromDays(0), (1970, 1, 1));
-        assert_eq!(civilFromDays(59), (1970, 3, 1));
-        // 2000 was a leap year (divisible by 400) where 1900 was not.
-        assert_eq!(civilFromDays(11_016), (2000, 2, 29));
-        assert_eq!(civilFromDays(-1), (1969, 12, 31));
-    }
-
-    #[test]
-    fn the_printed_shapes_are_fixed_width() {
-        // The listener greps these out of a log by eye, and `xtask verify`
-        // prints the date beside a filename — both want a column that lines up.
-        let stamp = timestamp();
-        assert_eq!(stamp.len(), 20, "{stamp}");
-        assert!(stamp.ends_with('Z'), "{stamp}");
-        assert_eq!(today().len(), 10);
-        // Same clock, so the date half of one is the whole of the other unless
-        // the two calls straddle midnight.
-        assert_eq!(&stamp[..10], &today()[..10]);
-    }
 }

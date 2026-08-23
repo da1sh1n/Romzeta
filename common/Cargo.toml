@@ -1,6 +1,6 @@
 [package]
 name = "common"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -25,3 +25,9 @@ windows-sys = { version = "0.61.2", features = [
     # SetCurrentProcessExplicitAppUserModelID, for src/aumid.rs.
     "Win32_UI_Shell",
 ] }
+
+# The test harness every crate's tests/ folder runs on. Dev-only, and the
+# reason this edge is allowed to point back at common: cargo excludes
+# dev-dependencies from the cycle it would otherwise refuse.
+[dev-dependencies]
+testkit = { path = "../testkit" }

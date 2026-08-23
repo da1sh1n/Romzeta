@@ -16,28 +16,7 @@
 
 // ########## ENTRY POINT ##########
 
-mod app;
-mod autoplay;
-mod cartridge;
-mod catalog;
-mod clipboard;
-mod constants;
-mod copy;
-mod detect;
-mod font;
-mod image;
-mod listener;
-mod payload;
-mod shell;
-mod steam;
-mod ui;
-mod version;
-mod volume;
-mod wake;
-mod work;
-
-#[cfg(test)]
-mod tests;
+use installer::{app, shell, version};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Before anything else, so Task Manager groups this process under the same

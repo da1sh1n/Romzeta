@@ -263,7 +263,7 @@ pub fn list() -> Vec<Volume> {
 
 /// Every mounted drive, refused ones included, each carrying the
 /// [`Eligibility`] that decided it.
-pub(crate) fn all() -> Vec<Volume> {
+pub fn all() -> Vec<Volume> {
     platform::list()
 }
 
@@ -310,7 +310,7 @@ pub fn isSystemDrive(root: &Path) -> bool {
 }
 
 /// The uppercase drive letter of a path — `e:\games` → `Some('E')`.
-pub(crate) fn driveLetter(path: &Path) -> Option<char> {
+pub fn driveLetter(path: &Path) -> Option<char> {
     let text = path.to_string_lossy();
     let mut chars = text.chars();
     let letter = chars.next()?.to_ascii_uppercase();

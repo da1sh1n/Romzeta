@@ -1,6 +1,6 @@
 [package]
 name = "installer"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -126,3 +126,8 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_Threading",               # OpenProcess / process image paths
     "Win32_System_WindowsProgramming",      # DRIVE_* constants
 ] }
+
+# The test harness every crate's tests/ folder runs on. Dev-only: never linked
+# into the shipped installer.
+[dev-dependencies]
+testkit = { path = "../testkit" }

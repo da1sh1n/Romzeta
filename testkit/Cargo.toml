@@ -1,0 +1,15 @@
+[package]
+name = "testkit"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+# What every crate's tests/ folder runs on. Never shipped and never linked into
+# anything a user runs: it is a dev-dependency of the crates it serves.
+#
+# `common` depends the other way round for its own tests, which cargo allows
+# because that edge is a dev-dependency — the cycle never reaches a real build.
+[dependencies]
+# The UTC clock, so a test report and a program's log agree on what time it is.
+common = { path = "../common" }

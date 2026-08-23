@@ -39,13 +39,6 @@ impl Log {
         }
     }
 
-    /// A log that discards everything, so the core can be exercised without
-    /// touching the filesystem.
-    #[cfg(test)]
-    pub fn silent() -> Log {
-        Log { path: None }
-    }
-
     /// Where this log is writing. For the tray menu's "Open log".
     #[cfg(windows)]
     pub fn path(&self) -> Option<&Path> {

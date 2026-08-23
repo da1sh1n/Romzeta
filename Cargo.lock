@@ -334,9 +334,10 @@ dependencies = [
 
 [[package]]
 name = "common"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "sigblock",
+ "testkit",
  "windows-sys 0.61.2",
 ]
 
@@ -1591,7 +1592,7 @@ dependencies = [
 
 [[package]]
 name = "installer"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "common",
  "egui",
@@ -1604,6 +1605,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sigblock",
+ "testkit",
  "toml 1.1.4+spec-1.1.0",
  "trust",
  "windows-sys 0.61.2",
@@ -1772,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "launcher"
-version = "0.11.1"
+version = "0.12.0"
 dependencies = [
  "common",
  "rust-embed",
@@ -1780,6 +1782,7 @@ dependencies = [
  "serde_json",
  "sigblock",
  "tao",
+ "testkit",
  "toml 1.1.4+spec-1.1.0",
  "toml_edit 0.25.13+spec-1.1.0",
  "windows-sys 0.61.2",
@@ -1844,10 +1847,11 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "listener"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "common",
  "sigblock",
+ "testkit",
  "trust",
  "windows-sys 0.61.2",
  "winres",
@@ -3096,7 +3100,10 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "sigblock"
-version = "0.1.0"
+version = "0.2.0"
+dependencies = [
+ "testkit",
+]
 
 [[package]]
 name = "simd-adler32"
@@ -3352,6 +3359,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "testkit"
+version = "0.1.0"
+dependencies = [
+ "common",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3579,11 +3593,12 @@ checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 
 [[package]]
 name = "trust"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "minisign",
  "minisign-verify",
  "sigblock",
+ "testkit",
 ]
 
 [[package]]
@@ -4348,13 +4363,14 @@ checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "common",
  "minisign",
  "minisign-verify",
  "rpassword",
  "sigblock",
+ "testkit",
  "toml 0.9.12+spec-1.1.0",
 ]
 

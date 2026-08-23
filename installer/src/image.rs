@@ -45,7 +45,7 @@ pub fn ratioWarning(path: &Path) -> Option<String> {
     })
 }
 
-pub(crate) fn parse(bytes: &[u8]) -> Option<(u32, u32)> {
+pub fn parse(bytes: &[u8]) -> Option<(u32, u32)> {
     png(bytes)
         .or_else(|| webp(bytes))
         .or_else(|| gif(bytes))

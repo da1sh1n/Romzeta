@@ -1,6 +1,6 @@
 [package]
 name = "sigblock"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -9,3 +9,8 @@ license = "GPL-3.0-or-later"
 # that run before anything else exists. It only knows how to find sixteen bytes
 # at the end of a file.
 [dependencies]
+
+# The test harness every crate's tests/ folder runs on. Dev-only: never linked
+# into anything that ships.
+[dev-dependencies]
+testkit = { path = "../testkit" }

@@ -20,7 +20,7 @@ use crate::log::Log;
 use crate::{alert, trust, version};
 
 /// Whether this call may raise a dialog, and whether it waits for one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
 pub enum Announce {
     /// Show it and carry on. The trigger's message loop must not stall.
     Detached,
@@ -41,9 +41,8 @@ impl Announce {
     }
 }
 
-/// What became of one volume. Returned as well as logged, because the Windows
-/// trigger debounces on it.
-#[derive(Debug, PartialEq, Eq)]
+/// What became of one volume. Every caller in the binary logs rather than
+/// branches on it; it is returned so the tests can assert on the decision.
 pub enum Outcome {
     /// The launcher was spawned. The listener does not wait for it.
     Launched,
@@ -86,7 +85,7 @@ pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
         Some(theirs) if theirs.major != ours.major => {
             log.line(&format!(
                 "{} ignored: launcher is project version {} and this listener is {} \
-                 (signed by the {} key)",
+                (signed by the {} key)",
                 root.display(),
                 theirs.major,
                 ours.major,
@@ -96,11 +95,11 @@ pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
                 "Romzeta — cartridge not compatible",
                 &format!(
                     "This cartridge's launcher is version {theirs}, but the Romzeta installed \
-                     on this PC is version {ours}.\n\n\
-                     They share the same signing key, so both are genuine — but the first \
-                     number has to match for them to work together. Update whichever is \
-                     older.\n\n\
-                     Nothing was started."
+                    on this PC is version {ours}.\n\n\
+                    They share the same signing key, so both are genuine — but the first \
+                    number has to match for them to work together. Update whichever is \
+                    older.\n\n\
+                    Nothing was started."
                 ),
             );
             return Outcome::Ignored;
@@ -114,11 +113,6 @@ pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
             ));
         }
         None => {
-            // Deliberately not fatal. The signature already proved this is our
-            // binary, and refusing a genuine launcher over a comment we cannot
-            // parse would turn a cosmetic fault into a dead cartridge. A
-            // definite mismatch above is different: that is the signature
-            // clearly stating something we cannot work with.
             log.line(&format!(
                 "{} launcher's signature carries no usable version ({:?}); starting it anyway",
                 root.display(),
@@ -159,8 +153,7 @@ pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
 /// trigger already debounces — and costs one small file read plus one
 /// `OpenProcess`, so there is nothing to cache away. Caching the answer would
 /// only make it wrong: a game that exits seconds before a cartridge goes in
-/// would still be reported as running, and the cartridge would be silently
-/// ignored.
+/// would still be reported as running, and the cartridge would be silently ignored.
 fn shouldSuppressGlobalLaunch(log: &Log) -> bool {
     let Some(lease) = common::lease::readLease() else {
         return false;

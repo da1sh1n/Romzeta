@@ -197,6 +197,3 @@ pub mod cli {
     #[cfg(not(windows))]
     pub fn attachConsole() {}
 }
-
-#[cfg(test)]
-mod tests;

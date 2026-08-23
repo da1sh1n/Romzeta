@@ -19,8 +19,18 @@ Romzeta build tool.
   cargo run -p xtask -- keygen --release the one release key -> keys/romzeta.pub (committed)
   cargo run -p xtask -- sign <exe>...    sign in place
   cargo run -p xtask -- verify <exe>...  check against keys/romzeta.pub and keys/dev.pub
+  cargo run -p xtask -- test [crate]     run tests and merge each crate's report
+                                         (every crate with a tests/ folder, or just one)
   cargo run -p xtask -- version          show the project version and every crate's
 ";
+
+// ========== The Test Report (report.rs) ==========
+
+/// Where a crate's tests leave their per-category tables, under `<crate>/tests/`.
+pub const TEST_LOGS: &str = "logs";
+
+/// The column `xtask test` adds when it merges those tables into one.
+pub const CATEGORY_COLUMN: &str = "Category";
 
 // ========== Signing Keys (keys.rs) ==========
 

@@ -16,24 +16,7 @@
 
 // ########## ENTRY POINT ##########
 
-mod assets;
-mod catalog;
-mod config;
-mod constants;
-mod content;
-mod instance;
-mod keeper;
-mod launch;
-mod log;
-mod order;
-mod steam;
-mod tray;
-mod ui;
-mod version;
-mod window;
-
-#[cfg(test)]
-mod tests;
+use launcher::{content, instance, ui, version};
 
 fn main() -> wry::Result<()> {
     // Before anything else, so Task Manager groups this process under the same

@@ -1,6 +1,6 @@
 [package]
 name = "listener"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -48,3 +48,8 @@ windows-sys = { version = "0.61.2", features = [
 # any bearing on a Linux build.
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
+
+# The test harness every crate's tests/ folder runs on. Dev-only: never linked
+# into the shipped listener.
+[dev-dependencies]
+testkit = { path = "../testkit" }

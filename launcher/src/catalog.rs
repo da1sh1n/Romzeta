@@ -65,7 +65,7 @@ pub fn load(base_dir: &Path) -> Vec<Game> {
 /// `..` is refused outright rather than resolved and range-checked, because a
 /// symlink inside `games/` could make an in-range path resolve somewhere it
 /// does not point at all.
-pub(crate) fn isContained(relative: &str) -> bool {
+pub fn isContained(relative: &str) -> bool {
     Path::new(relative)
         .components()
         .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))

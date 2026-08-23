@@ -157,6 +157,3 @@ fn splitComment(comment: &str) -> (&str, &str) {
     // `unwrap_or("")` rather than `?`: see the doc comment above.
     (parts.next().unwrap_or(""), parts.next().unwrap_or(""))
 }
-
-#[cfg(test)]
-mod tests;

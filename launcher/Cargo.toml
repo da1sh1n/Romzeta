@@ -1,6 +1,6 @@
 [package]
 name = "launcher"
-version = "0.11.1"
+version = "0.12.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -49,3 +49,8 @@ windows-sys = { version = "0.61.2", features = [
 # Launcher". Same crate and version the listener already uses in its build.rs.
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
+
+# The test harness every crate's tests/ folder runs on. Dev-only: never linked
+# into the shipped launcher.
+[dev-dependencies]
+testkit = { path = "../testkit" }

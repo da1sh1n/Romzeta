@@ -103,7 +103,7 @@ fn fromManifest(source: &Path) -> Option<u32> {
 /// The format is Valve's KeyValues: one `"key"\t\t"value"` pair per line, in
 /// braces this does not need to follow. Only the two keys are looked at, and a
 /// nested block that happened to repeat one cannot win — the first wins.
-pub(crate) fn manifest(text: &str) -> Option<(u32, String)> {
+pub fn manifest(text: &str) -> Option<(u32, String)> {
     let mut appid = None;
     let mut installdir = None;
     for line in text.lines() {

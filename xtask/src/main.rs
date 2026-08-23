@@ -20,19 +20,11 @@
 // which rustc's default lints object to. Silenced once, at the crate root.
 #![allow(non_snake_case)]
 
-mod constants;
-mod keys;
-mod manifest;
-mod release;
-mod sign;
-
-#[cfg(test)]
-mod tests;
-
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use crate::constants::USAGE;
+use xtask::constants::USAGE;
+use xtask::{keys, manifest, release, report, sign};
 
 // ########## THE COMMAND LINE ##########
 
@@ -51,6 +43,7 @@ fn main() -> ExitCode {
         "sign" => signAll(&root, &rest),
         "verify" => verifyAll(&root, &rest),
         "version" => showVersions(&root),
+        "test" => report::runAll(&root, rest.first().and_then(|arg| arg.to_str())),
         "" | "help" | "-h" | "--help" => {
             print!("{USAGE}");
             return ExitCode::SUCCESS;

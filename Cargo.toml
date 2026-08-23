@@ -23,6 +23,7 @@ members = [
     "launcher",
     "listener",
     "sigblock",
+    "testkit",
     "trust",
     "xtask",
 ]
@@ -38,6 +39,9 @@ members = [
 # there is no dependency edge between them to order it (binary-artifact
 # dependencies are still unstable). Leaving it out of the default set makes the
 # correct order the natural one instead of a race that usually goes your way.
+#
+# testkit is out because it is a dev-dependency: it exists for `tests/` and is
+# never linked into a product.
 #
 # xtask is out for a different reason: it is a build tool, not a product, and
 # nothing it depends on should ever end up linked into something we ship. It

@@ -33,9 +33,9 @@ use crate::constants::*;
 use crate::window;
 use crate::{assets, config, keeper, launch, order, tray};
 
-/// `pub(crate)` so `tray::windows` can send `TrayRestoreRequested` back into
+/// `pub` so `tray::windows` can send `TrayRestoreRequested` back into
 /// this event loop.
-pub(crate) enum UserEvent {
+pub enum UserEvent {
     CloseRequested,
     /// The page has finished its outro over a game that came up.
     HideRequested,

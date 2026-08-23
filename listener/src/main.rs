@@ -12,22 +12,12 @@
 #![windows_subsystem = "windows"]
 #![allow(non_snake_case)] // camelCase functions
 
-mod alert;
-mod constants;
-mod log;
-mod trigger;
-mod trust;
-mod version;
-mod volume;
-
-#[cfg(test)]
-mod tests;
-
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use log::Log;
+use listener::log::{self, Log};
+use listener::{trigger, version, volume};
 
 // ########## STARTUP ##########
 
@@ -58,7 +48,7 @@ fn main() {
         Mode::Signature => {
             sigblock::cli::attachConsole();
             sigblock::cli::printSignature();
-            println!("trusts: {}", trust::anchorNames());
+            println!("trusts: {}", listener::trust::anchorNames());
         }
         Mode::Check(root) => {
             let logger: Log = start();

@@ -43,7 +43,14 @@ pub fn run(root: &Path) -> Result<(), String> {
     cargo(
         root,
         &[
-            "build", "--release", "-p", "launcher", "-p", "listener", "-p", "keeper",
+            "build",
+            "--release",
+            "-p",
+            "launcher",
+            "-p",
+            "listener",
+            "-p",
+            "keeper",
         ],
     )?;
 

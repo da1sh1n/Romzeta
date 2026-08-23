@@ -19,7 +19,11 @@ use std::process::Command;
 /// cartridge from going idle.
 pub fn spawn(base_dir: &Path, pid: u32, playtime_path: Option<&Path>) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let keeper_name = if cfg!(windows) { "keeper.exe" } else { "keeper" };
+    let keeper_name = if cfg!(windows) {
+        "keeper.exe"
+    } else {
+        "keeper"
+    };
     let keeper_exe: PathBuf = exe.with_file_name(keeper_name);
 
     let mut command = Command::new(keeper_exe);
@@ -42,5 +46,8 @@ pub fn spawn(base_dir: &Path, pid: u32, playtime_path: Option<&Path>) -> Result<
         command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
 
-    command.spawn().map(|_| ()).map_err(|error| error.to_string())
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }

@@ -4,8 +4,8 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Every constant the crate owns, in one file. Section headers name the module
-//! each belongs to.
+//! Every constant the crate owns, in one file.
+//! Section headers name the module each belongs to.
 
 // ########## LISTENER CONSTANTS ##########
 
@@ -23,17 +23,11 @@ pub const LAUNCHER_NAME: &str = "launcher.exe";
 #[cfg(not(windows))]
 pub const LAUNCHER_NAME: &str = "launcher";
 
-// ========== Handling One Volume (volume.rs) ==========
-
-/// How often the gate re-checks whether the game it let through is still
-/// running, in milliseconds.
-pub const PROCESS_CHECK_INTERVAL_MS: u64 = 10_000;
-
 // ========== Waiting For Cartridges (trigger/windows.rs) ==========
 
 /// How long to ignore repeat arrivals for a drive letter already handled. A
 /// flaky USB link fires several add events for one physical connection.
-pub const DEBOUNCE_SECONDS: u64 = 5;
+pub const DEBOUNCE_MILLISECONDS: u64 = 5000;
 
 /// The listener's mutex name, distinct from the launcher's
 /// `Local\Romzeta.CartridgeLauncher`. `Local\` scopes it to the login session,

@@ -15,33 +15,9 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
 
-use crate::constants::PROCESS_CHECK_INTERVAL_MS;
 use crate::log::Log;
 use crate::{alert, trust, version};
-
-struct GateState {
-    last_check: Option<Instant>,
-    active: bool,
-    pid: Option<u32>,
-}
-
-impl GateState {
-    fn new() -> Self {
-        Self {
-            last_check: None,
-            active: false,
-            pid: None,
-        }
-    }
-}
-
-fn gateState() -> &'static Mutex<GateState> {
-    static STATE: OnceLock<Mutex<GateState>> = OnceLock::new();
-    STATE.get_or_init(|| Mutex::new(GateState::new()))
-}
 
 /// Whether this call may raise a dialog, and whether it waits for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,7 +81,7 @@ pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
 
     // Straight out of the verified signature — nothing was executed to get it.
     let ours = version::own();
-    match version::parse(&launcher.version) {
+    match common::version::parse(&launcher.version) {
         // Majors differ: both are genuine, and they cannot work together.
         Some(theirs) if theirs.major != ours.major => {
             log.line(&format!(
@@ -176,46 +152,28 @@ pub fn handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome {
     }
 }
 
+/// Whether an already-running game holds the global lease, in which case this
+/// volume must not start a second one.
+///
+/// Read fresh on every call. This runs once per cartridge arrival — which the
+/// trigger already debounces — and costs one small file read plus one
+/// `OpenProcess`, so there is nothing to cache away. Caching the answer would
+/// only make it wrong: a game that exits seconds before a cartridge goes in
+/// would still be reported as running, and the cartridge would be silently
+/// ignored.
 fn shouldSuppressGlobalLaunch(log: &Log) -> bool {
-    let mut state = gateState()
-        .lock()
-        .expect("global lease gate mutex poisoned");
-    let now = Instant::now();
-    let check_every = Duration::from_millis(PROCESS_CHECK_INTERVAL_MS);
-
-    if let Some(last_check) = state.last_check
-        && now.duration_since(last_check) < check_every
-    {
-        if state.active
-            && let Some(pid) = state.pid
-        {
-            log.line(&format!(
-                "launch suppressed: active global lease pid {pid} (cached under {}ms)",
-                PROCESS_CHECK_INTERVAL_MS
-            ));
-        }
-        return state.active;
-    }
-
-    state.last_check = Some(now);
     let Some(lease) = common::lease::readLease() else {
-        state.active = false;
-        state.pid = None;
         return false;
     };
 
     if common::lease::processExists(lease.pid) {
-        state.active = true;
-        state.pid = Some(lease.pid);
         log.line(&format!(
-            "launch suppressed: active global lease pid {} (checked)",
+            "launch suppressed: active global lease pid {}",
             lease.pid
         ));
         return true;
     }
 
-    state.active = false;
-    state.pid = None;
     if let Err(error) = common::lease::clearLease() {
         log.line(&format!("failed clearing stale global lease: {error}"));
     } else {

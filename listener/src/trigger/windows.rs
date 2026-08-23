@@ -44,7 +44,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use common::utf16::wide;
 
 use crate::constants::{
-    DEBOUNCE_SECONDS, ID_MENU_EXIT, ID_MENU_OPEN_LOG, INSTANCE_MUTEX, TRAY_ICON_RESOURCE,
+    DEBOUNCE_MILLISECONDS, ID_MENU_EXIT, ID_MENU_OPEN_LOG, INSTANCE_MUTEX, TRAY_ICON_RESOURCE,
     TRAY_ICON_UID, WINDOW_CLASS, WM_TRAYICON,
 };
 use crate::log::Log;
@@ -75,7 +75,7 @@ impl State {
     /// the volume) means reading and verifying it before deciding to skip it,
     /// which is most of the work the debounce exists to avoid.
     fn debounced(&mut self, letter: char) -> bool {
-        let window = Duration::from_secs(DEBOUNCE_SECONDS);
+        let window = Duration::from_millis(DEBOUNCE_MILLISECONDS);
         let now = Instant::now();
         if !window.is_zero()
             && let Some(previous) = self.recent.get(&letter)

@@ -11,7 +11,7 @@
 // ########## SIGNATURE BLOCK TESTS ##########
 
 // `crate::*` because these tests use the private `MAGIC` and `FORMAT` too.
-use crate::constants::FOOTER_LEN;
+use crate::constants::{FOOTER_LEN, MAX_BLOCK_LEN};
 use crate::*;
 
 const EXE: &[u8] = b"MZ\x90\x00 not really a PE, but neither is anything else here";
@@ -109,4 +109,72 @@ fn an_empty_payload_is_still_addressable() {
     let (payload, signature) = split(&signed);
     assert!(payload.is_empty());
     assert_eq!(signature, Some(SIG));
+}
+
+// ========== Reading From Disk ==========
+
+#[test]
+fn the_file_reader_finds_the_same_block() {
+    let signed = attach(EXE, SIG);
+    let mut file = std::io::Cursor::new(signed);
+    assert_eq!(
+        readBlock(&mut file).expect("no I/O error"),
+        Some(SIG.into())
+    );
+    assert!(hasBlock(&mut file).expect("no I/O error"));
+}
+
+#[test]
+fn the_probe_agrees_with_split_on_every_bad_footer() {
+    let signed = attach(EXE, SIG);
+    let at = signed.len() - FOOTER_LEN;
+
+    let mut truncated = signed.clone();
+    truncated.truncate(at);
+    let mut wrong_len = signed.clone();
+    wrong_len[at..at + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+    let mut wrong_format = signed.clone();
+    wrong_format[at + 4..at + 6].copy_from_slice(&2u16.to_le_bytes());
+
+    for bad in [EXE.to_vec(), truncated, wrong_len, wrong_format] {
+        let mut file = std::io::Cursor::new(bad.clone());
+        assert_eq!(hasBlock(&mut file).expect("no I/O error"), isSigned(&bad));
+    }
+}
+
+#[test]
+fn the_probe_passes_a_block_only_the_full_read_can_refuse() {
+    // A good footer over bytes that are not UTF-8. `hasBlock` reads the footer
+    // and nothing else, so it says yes; the callers that use it as a cheap
+    // refusal go on to read the file and `split` gives the real answer. Being
+    // *less* strict is the only safe direction for a probe to differ in.
+    let mut not_utf8 = attach(EXE, SIG);
+    let at = not_utf8.len() - FOOTER_LEN - SIG.len();
+    not_utf8[at] = 0xff;
+
+    let mut file = std::io::Cursor::new(not_utf8.clone());
+    assert!(hasBlock(&mut file).expect("no I/O error"));
+    assert_eq!(readBlock(&mut file).expect("no I/O error"), None);
+    assert!(!isSigned(&not_utf8));
+}
+
+#[test]
+fn an_absurd_block_length_is_refused_before_it_is_allocated() {
+    // A footer claiming most of the address space, on a file that is long
+    // enough for the claim to pass the bounds check. Without the cap this is a
+    // multi-gigabyte allocation asked for by a stranger's disk.
+    let mut signed = attach(EXE, SIG);
+    let at = signed.len() - FOOTER_LEN;
+    signed[at..at + 4].copy_from_slice(&(MAX_BLOCK_LEN + 1).to_le_bytes());
+    assert!(!isSigned(&signed));
+    let mut file = std::io::Cursor::new(signed);
+    assert!(!hasBlock(&mut file).expect("no I/O error"));
+}
+
+#[test]
+fn a_short_file_cannot_panic_on_disk_either() {
+    for len in 0..=FOOTER_LEN {
+        let mut file = std::io::Cursor::new(EXE[..len].to_vec());
+        assert_eq!(readBlock(&mut file).expect("no I/O error"), None);
+    }
 }

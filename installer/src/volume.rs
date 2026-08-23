@@ -20,6 +20,7 @@
 
 // ########## ELIGIBLE VOLUMES ##########
 
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use trust::Anchor;
@@ -43,7 +44,7 @@ pub fn attestedLauncher(root: &Path) -> Option<String> {
     if !path.is_file() {
         return None;
     }
-    let bytes = std::fs::read(&path).ok()?;
+    let bytes = readIfSigned(&path)?;
     trust::attest(&bytes, ANCHORS, trust::constants::LAUNCHER_ROLE)
         .ok()
         .map(|attested| attested.version)
@@ -59,10 +60,25 @@ pub fn attestedKeeper(root: &Path) -> Option<String> {
     if !path.is_file() {
         return None;
     }
-    let bytes = std::fs::read(&path).ok()?;
+    let bytes = readIfSigned(&path)?;
     trust::attest(&bytes, ANCHORS, trust::constants::KEEPER_ROLE)
         .ok()
         .map(|attested| attested.version)
+}
+
+/// The bytes of `path`, but only once its trailing footer says a signature
+/// block is there. `None` for an unsigned file, which is the same answer the
+/// caller gives it anyway — and gives it without a drive someone else wrote
+/// deciding how much memory this reads.
+fn readIfSigned(path: &Path) -> Option<Vec<u8>> {
+    let mut file = std::fs::File::open(path).ok()?;
+    if !sigblock::hasBlock(&mut file).ok()? {
+        return None;
+    }
+    file.seek(SeekFrom::Start(0)).ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    Some(bytes)
 }
 
 /// Whether a drive may be written to, and if not, why not.

@@ -24,7 +24,9 @@ pub mod constants;
 
 // ########## THE SIGNATURE BLOCK ##########
 
-use crate::constants::{FOOTER_LEN, FORMAT, MAGIC};
+use std::io::{Read, Seek, SeekFrom};
+
+use crate::constants::{FOOTER_LEN, FORMAT, MAGIC, MAX_BLOCK_LEN};
 
 // ========== Reading ==========
 
@@ -54,7 +56,7 @@ pub fn split(bytes: &[u8]) -> (&[u8], Option<&str>) {
     let len = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
     // Compared as u64, because `as usize` narrows on a 32-bit target: a length
     // of 2^32 + 8 would wrap to 8 there and sail through the bounds check.
-    if u64::from(len) > footer_at as u64 {
+    if len > MAX_BLOCK_LEN || u64::from(len) > footer_at as u64 {
         return unsigned;
     }
     let signature_at = footer_at - len as usize;
@@ -70,6 +72,59 @@ pub fn split(bytes: &[u8]) -> (&[u8], Option<&str>) {
 /// block verifies against any key.
 pub fn isSigned(bytes: &[u8]) -> bool {
     split(bytes).1.is_some()
+}
+
+// ========== Reading From Disk ==========
+
+/// The block at the end of an open file, without the rest of the file going
+/// through memory. `Ok(None)` for anything that is not a well-formed block,
+/// exactly as [`split`] decides it; `Err` only for an I/O failure, which is a
+/// different answer from "unsigned".
+pub fn readBlock<F: Read + Seek>(file: &mut F) -> std::io::Result<Option<String>> {
+    let Some((signature_at, len)) = readFooter(file)? else {
+        return Ok(None);
+    };
+    file.seek(SeekFrom::Start(signature_at))?;
+    let mut block = vec![0u8; len];
+    file.read_exact(&mut block)?;
+    // A minisig is text, so a block whose bytes are not UTF-8 was never ours.
+    Ok(String::from_utf8(block).ok())
+}
+
+/// Whether an open file ends in a well-formed block, for the price of a seek
+/// and sixteen bytes. The cheap refusal: a file named like ours off a
+/// stranger's drive can be any size at all, and reading gigabytes to arrive at
+/// the same "unsigned" is a cost worth not paying.
+pub fn hasBlock<F: Read + Seek>(file: &mut F) -> std::io::Result<bool> {
+    Ok(readFooter(file)?.is_some())
+}
+
+/// Reads the trailing footer and checks it, returning where the block starts
+/// and how long it is. Leaves the cursor wherever the last read left it, so a
+/// caller that wants the file from the top must seek back.
+fn readFooter<F: Read + Seek>(file: &mut F) -> std::io::Result<Option<(u64, usize)>> {
+    let end = file.seek(SeekFrom::End(0))?;
+    // `checked_sub` rather than `-`: a file shorter than the footer would
+    // underflow and panic, and an empty file is an ordinary thing to be handed.
+    let Some(footer_at) = end.checked_sub(FOOTER_LEN as u64) else {
+        return Ok(None);
+    };
+    file.seek(SeekFrom::Start(footer_at))?;
+    let mut footer = [0u8; FOOTER_LEN];
+    file.read_exact(&mut footer)?;
+
+    // Magic first — it is the cheapest way to reject the overwhelming majority.
+    if &footer[6..] != MAGIC {
+        return Ok(None);
+    }
+    if u16::from_le_bytes([footer[4], footer[5]]) != FORMAT {
+        return Ok(None);
+    }
+    let len = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
+    if len > MAX_BLOCK_LEN || u64::from(len) > footer_at {
+        return Ok(None);
+    }
+    Ok(Some((footer_at - u64::from(len), len as usize)))
 }
 
 // ========== Writing ==========
@@ -103,8 +158,10 @@ pub mod cli {
     pub fn ownSignature() -> Option<String> {
         // Chained `?` on Options: any step failing means "no signature", which
         // is the same answer as an unsigned exe and needs no separate branch.
-        let bytes = std::fs::read(std::env::current_exe().ok()?).ok()?;
-        super::split(&bytes).1.map(str::to_string)
+        let mut file = std::fs::File::open(std::env::current_exe().ok()?).ok()?;
+        // Reads the tail, not the whole exe — the signature is the only part of
+        // itself this ever wants.
+        super::readBlock(&mut file).ok().flatten()
     }
 
     /// Prints this exe's signature block, or the word `unsigned`.

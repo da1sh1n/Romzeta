@@ -20,3 +20,8 @@ pub const FORMAT: u16 = 1;
 
 /// Size of the fixed footer: length (4) + format (2) + magic (10).
 pub const FOOTER_LEN: usize = 16;
+
+/// Largest block either reader accepts. A minisig is about 200 bytes; the cap
+/// is there because a crafted footer must not be able to ask for a
+/// gigabyte-sized allocation before a single byte has been verified.
+pub const MAX_BLOCK_LEN: u32 = 64 * 1024;

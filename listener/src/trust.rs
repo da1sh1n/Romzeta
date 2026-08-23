@@ -12,17 +12,16 @@
 
 use std::fmt;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use trust::Anchor;
 
 use crate::constants::LAUNCHER_NAME;
 
-// `ANCHORS: &[Anchor]`, written by build.rs from keys/*.pub and pasted in here
-// at compile time. Compiled in rather than read from disk: an anchor sitting in
-// a writable file beside the exe would let anything able to edit it grant
-// itself auto-run.
+// `ANCHORS: &[Anchor]`, written by build.rs from keys/*.pub and pasted in here at compile time.
+// Compiled in rather than read from disk: an anchor sitting in a writable file beside the exe
+// would let anything able to edit it grant itself auto-run.
 include!(concat!(env!("OUT_DIR"), "/trust_anchors.rs"));
 
 /// A launcher that verified, what vouched for it, and what it says it is.
@@ -43,11 +42,11 @@ pub struct Trusted {
 /// way, but they stay distinct because the log is this program's only
 /// diagnostic and "ordinary USB stick" must not read like "someone tampered".
 pub enum Refusal {
-    /// No launcher at the volume root — every ordinary drive, and by far the
-    /// most common outcome.
+    /// Launcher missing
     NoLauncher,
+    /// Launcher unreadable
     Unreadable(String),
-    /// It is there, and its signature does not make it something we will run.
+    /// Launcher with unsafe or missing signature.
     Signature(trust::Refusal),
 }
 
@@ -57,8 +56,6 @@ impl fmt::Display for Refusal {
         match self {
             Refusal::NoLauncher => write!(f, "no {LAUNCHER_NAME} at the volume root"),
             Refusal::Unreadable(e) => write!(f, "{LAUNCHER_NAME} could not be read: {e}"),
-            // The anchor list only helps on the one refusal it explains, so it
-            // is spelled out here instead of appended to every variant.
             Refusal::Signature(trust::Refusal::Untrusted) => write!(
                 f,
                 "{LAUNCHER_NAME} is signed, but not by a key this listener trusts ({})",
@@ -78,25 +75,25 @@ impl Refusal {
             Refusal::NoLauncher | Refusal::Unreadable(_) => return None,
             Refusal::Signature(trust::Refusal::Unsigned) => format!(
                 "The {LAUNCHER_NAME} on this cartridge carries no signature.\n\n\
-                 Romzeta only starts a launcher signed with a key this PC trusts."
+                Romzeta only starts a launcher signed with a key this PC trusts."
             ),
             Refusal::Signature(trust::Refusal::Malformed(_)) => format!(
                 "The signature on this cartridge's {LAUNCHER_NAME} could not be read.\n\n\
-                 The file is damaged, or the copy onto the cartridge did not finish."
+                The file is damaged, or the copy onto the cartridge did not finish."
             ),
             Refusal::Signature(trust::Refusal::Untrusted) => format!(
                 "This cartridge's {LAUNCHER_NAME} is properly signed, but not by a key this \
-                 PC trusts.\n\n\
-                 It trusts: {}.",
+                PC trusts.\n\n\
+                It trusts: {}.",
                 anchorNames()
             ),
             Refusal::Signature(trust::Refusal::WrongRole { expected, found }) => format!(
                 "The file at this cartridge's root is a signed {found}, and a {expected} was \
-                 expected.\n\n\
-                 It is genuine, but it is not the program that starts a cartridge."
+                expected.\n\n\
+                It is genuine, but it is not the program that starts a cartridge."
             ),
         };
-        Some(format!("{reason}\n\nNothing was started."))
+        Some(format!("{reason}"))
     }
 }
 
@@ -108,10 +105,16 @@ pub fn verifyLauncher(root: &Path) -> Result<Trusted, Refusal> {
         return Err(Refusal::NoLauncher);
     }
 
-    // Read the lot into memory. A launcher is a few megabytes and this happens
-    // once per volume arrival; minisign's streaming verification only works on
-    // pre-hashed signatures and would buy nothing here.
-    let (file, bytes) = readLocked(&path).map_err(|e| Refusal::Unreadable(e.to_string()))?;
+    let mut file = openLocked(&path).map_err(|e| Refusal::Unreadable(e.to_string()))?;
+
+    // A seek and sixteen bytes, before the file goes anywhere near memory: the
+    // thing at a volume root named launcher.exe can be any size at all, and an
+    // unsigned one is refused the same way whether or not it was read first.
+    if !sigblock::hasBlock(&mut file).map_err(|e| Refusal::Unreadable(e.to_string()))? {
+        return Err(Refusal::Signature(trust::Refusal::Unsigned));
+    }
+
+    let bytes = readAll(&mut file).map_err(|e| Refusal::Unreadable(e.to_string()))?;
 
     let attested = trust::attest(&bytes, ANCHORS, trust::constants::LAUNCHER_ROLE)
         .map_err(Refusal::Signature)?;
@@ -120,21 +123,18 @@ pub fn verifyLauncher(root: &Path) -> Result<Trusted, Refusal> {
         path,
         anchor: attested.anchor,
         version: attested.version,
-        // Moved into the struct, so the lock is released only when the caller
-        // drops it — after the launcher has been started.
         _lock: file,
     })
 }
 
 /// Opens `path` so nothing else can write to or delete it while the handle
-/// lives, and reads it. Returns the still-open handle alongside the bytes.
+/// lives.
 ///
 /// Verifying bytes and then executing a *path* is two different files if
 /// anything can change the disk in between, and the disk was plugged in by a
-/// stranger. This does not stop hostile USB firmware, which lies below the
-/// filesystem; it stops everything going through Windows.
+/// stranger.
 #[cfg(windows)]
-fn readLocked(path: &Path) -> std::io::Result<(File, Vec<u8>)> {
+fn openLocked(path: &Path) -> std::io::Result<File> {
     // The extension trait that adds `share_mode` to OpenOptions.
     use std::os::windows::fs::OpenOptionsExt;
 
@@ -142,31 +142,31 @@ fn readLocked(path: &Path) -> std::io::Result<(File, Vec<u8>)> {
     /// rather than pulling that crate onto a path this file otherwise shares.
     const FILE_SHARE_READ: u32 = 0x0000_0001;
 
-    // Sharing *reads* and nothing else is the whole trick: the image loader
-    // still needs a read handle to start the process, while writers and
-    // deleters are refused. Plain `File::open` asks for the permissive default.
-    let mut file = std::fs::OpenOptions::new()
+    // Reads shared, writes and deletes refused: the image loader still needs a
+    // read handle to start the process.
+    std::fs::OpenOptions::new()
         .read(true)
         .share_mode(FILE_SHARE_READ)
-        .open(path)?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
-    Ok((file, bytes))
+        .open(path)
 }
 
 /// Unix has no share modes — an open handle excludes nothing — so this is a
-/// plain read. The handle is still returned and still held, so both builds have
+/// plain open. The handle is still returned and still held, so both builds have
 /// one shape rather than two.
 #[cfg(not(windows))]
-fn readLocked(path: &Path) -> std::io::Result<(File, Vec<u8>)> {
-    let mut file = File::open(path)?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
-    Ok((file, bytes))
+fn openLocked(path: &Path) -> std::io::Result<File> {
+    File::open(path)
 }
 
-/// The anchors this build carries, comma-separated, for the log line and
-/// `--signature`.
+/// Reads the whole file from the top, wherever the footer probe left the cursor.
+fn readAll(file: &mut File) -> std::io::Result<Vec<u8>> {
+    file.seek(SeekFrom::Start(0))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// The anchors this build carries, comma-separated, for the log line and --signature`.
 pub fn anchorNames() -> String {
     ANCHORS
         .iter()

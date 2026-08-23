@@ -4,7 +4,6 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-
 #![allow(non_snake_case)] // camelCase functions
 
 // ########## EMBEDDING VERSION INFO ##########

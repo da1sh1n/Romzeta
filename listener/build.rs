@@ -14,12 +14,17 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    let manifest = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("set by cargo"));
+    let manifest = PathBuf::from(
+        std::env::var_os("CARGO_MANIFEST_DIR")
+            .expect("CARGO_MANIFEST_DIR not set: build.rs was not run by cargo"),
+    );
     let keys = manifest
         .parent()
-        .expect("listener/ has a parent")
+        .expect("crate dir has no parent: cannot locate the workspace keys/")
         .join("keys");
-    let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("set by cargo"));
+    let out = PathBuf::from(
+        std::env::var_os("OUT_DIR").expect("OUT_DIR not set: build.rs was not run by cargo"),
+    );
 
     let mut anchors = Vec::new();
     for (name, file) in [("release", "romzeta.pub"), ("dev", "dev.pub")] {
@@ -65,7 +70,8 @@ fn main() {
     }
     rust.push_str("];\n");
 
-    fs::write(out.join("trust_anchors.rs"), rust).expect("write trust_anchors.rs");
+    fs::write(out.join("trust_anchors.rs"), rust)
+        .expect("could not write trust_anchors.rs into OUT_DIR");
 
     embed_resources();
 }
@@ -83,7 +89,7 @@ fn embed_resources() {
     res.set("FileDescription", "Romzeta Listener");
     res.set("ProductName", "Romzeta");
     res.compile()
-        .expect("compile Windows resources (icon, version info)");
+        .expect("could not compile the Windows resources: check assets/listener.ico");
 }
 
 #[cfg(not(windows))]

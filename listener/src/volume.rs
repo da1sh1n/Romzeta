@@ -167,13 +167,12 @@ fn shouldSuppressGlobalLaunch(log: &Log) -> bool {
         return true;
     }
 
-    if let Err(error) = common::lease::clearLease() {
-        log.line(&format!("failed clearing stale global lease: {error}"));
-    } else {
-        log.line(&format!(
+    match common::lease::clearLease() {
+        Err(error) => log.line(&format!("failed clearing stale global lease: {error}")),
+        Ok(()) => log.line(&format!(
             "cleared stale global lease for pid {} after existence check",
             lease.pid
-        ));
+        )),
     }
     false
 }

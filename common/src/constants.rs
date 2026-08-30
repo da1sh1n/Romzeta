@@ -23,6 +23,13 @@ pub const DEFAULT_MAX_LOG_BYTES: u64 = 1024 * 1024;
 /// taskbar button.
 pub const AUMID: &str = "Romzeta";
 
+// ========== The Launcher's Single Instance ==========
+
+/// The mutex the launcher takes to be the only one open. Shared because the
+/// listener opens it too, to ask whether starting another is pointless.
+#[cfg(windows)]
+pub const LAUNCHER_INSTANCE_MUTEX: &str = r"Local\Romzeta.CartridgeLauncher";
+
 // ========== The Game Lease (lease.rs) ==========
 
 /// Name of the file the launcher writes and the listener reads to learn that a

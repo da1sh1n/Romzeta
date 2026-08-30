@@ -9,6 +9,8 @@ to end on real media. What is left is the Linux target.
 - [ ] Launch options per game, in Steam's syntax — extra arguments and `%command%`.
 - [ ] Transfer speed and estimated time left on the working screen.
 - [ ] Resume a failed or cancelled write instead of copying every game again.
+- [ ] A button that checks GitHub releases for a newer installer, and the releases to check against.
+- [ ] Detect whether a game can track achievements when it is added, and record it in the catalog.
 - [ ] Linux target: `/opt` or `~/.local/share` instead of Program Files, a **udev rule**
       instead of a Run key (not a systemd user service — nothing runs between connections),
       Linux launcher binary instead of `launcher.exe`. `volume.rs` and `listener.rs` are the
@@ -107,6 +109,33 @@ get wrong, which is exactly the file being deleted.
 The UI half: a failed write lands on Done with the error in `outcome`
 ([`src/app.rs`](src/app.rs)). That screen needs a Retry that rebuilds the plan against the drive as
 it now stands, instead of sending the user back through the wizard.
+
+## Updates from GitHub releases
+
+`updateLauncher` and `updateKeeper` in [`src/app.rs`](src/app.rs) refresh a cartridge from the
+binaries embedded here. What is missing is upstream: knowing a newer installer exists. This is the
+only place the installer touches the network, and only on the button.
+
+- [ ] Publish signed releases. `cargo run -p xtask -- release` already builds and signs; what is
+      left is tagging and uploading the artifacts.
+- [ ] A "Check for updates" button beside the existing two in [`src/ui/games.rs`](src/ui/games.rs).
+- [ ] Compare the latest tag against [`src/version.rs`](src/version.rs).
+- [ ] Verify a download against `keys/romzeta.pub` before offering to run it — the check
+      `xtask verify` does. An unsigned one is not offered.
+- [ ] Decide whether it replaces itself or just opens the release page.
+
+## Achievements
+
+Steam is the only source, and the answer is a file beside the exe — which `detect::scan` already
+walks past. Deciding here is what spares the launcher an undecided state to resolve later.
+
+- [ ] A marker list in [`src/constants.rs`](src/constants.rs): `steam_api64.dll` and `steam_api.dll`
+      to begin with. Filenames, not libraries — a new marker is a line in the list.
+- [ ] Look for one beside the exe during `detect::scan` in [`src/detect.rs`](src/detect.rs).
+- [ ] `tracks_achievements` on `Entry` in [`src/catalog.rs`](src/catalog.rs), written from that
+      check. `#[serde(default, skip_serializing_if = "isFalse")]`, the shape `steam` already uses.
+- [ ] "Achievements tracked on this game." under the app id in
+      [`src/ui/games.rs`](src/ui/games.rs). A label, not a checkbox.
 
 ## Saves system — parked until `2.x.y`
 

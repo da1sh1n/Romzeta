@@ -30,9 +30,7 @@ pub fn acquire() -> Option<InstanceGuard> {
     use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
     use windows_sys::Win32::System::Threading::CreateMutexW;
 
-    let name: Vec<u16> = "Local\\Romzeta.CartridgeLauncher\0"
-        .encode_utf16()
-        .collect();
+    let name = common::utf16::wide(common::constants::LAUNCHER_INSTANCE_MUTEX);
     unsafe {
         let handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
         if handle.is_null() {

@@ -25,9 +25,10 @@ pub const LAUNCHER_NAME: &str = "launcher";
 
 // ========== Waiting For Cartridges (trigger/windows.rs) ==========
 
-/// How long to ignore repeat arrivals for a drive letter already handled. A
-/// flaky USB link fires several add events for one physical connection.
-pub const DEBOUNCE_MILLISECONDS: u64 = 5000;
+/// How long a launcher this listener spawned is assumed to still be starting.
+/// Covers the gap before it takes its mutex, which a flaky USB link's repeat
+/// add events all land in.
+pub const LAUNCH_GRACE_MILLISECONDS: u64 = 5000;
 
 /// The listener's mutex name, distinct from the launcher's
 /// `Local\Romzeta.CartridgeLauncher`. `Local\` scopes it to the login session,

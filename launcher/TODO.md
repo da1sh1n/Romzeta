@@ -34,6 +34,31 @@ Fall through to `ui::run` and let the page show the error it already knows how t
 Only the seeding and the single-instance lock run before the branch, and both must stay — a second
 double-click should still do nothing rather than start the game twice.
 
+## Achievement store — check at start
+
+The keeper's store, read beside `catalog::load` in [`src/main.rs`](src/main.rs) before the webview
+is built. Nothing here may delay startup.
+
+- [ ] Read each game's `stats.toml` and hand it to the page alongside the catalog payload.
+- [ ] `tracks_achievements` from the catalog says whether a game has a source at all — a game
+      without one is not the same as one tracked with nothing unlocked yet.
+- [ ] A missing or unreadable store means "no achievements yet", not an error under a cover.
+- [ ] Flag a missing or stock `steam_api` beside a game whose flag is true — the next run would
+      record nothing.
+
+## Stats card — right click
+
+Right-clicking a cover replaces it with its stats, in the same grid slot so the row never reflows.
+Right-clicking again puts the cover back. [`src/cards.js`](src/cards.js), off the payload the
+section above loads.
+
+- [ ] `contextmenu` flips a cover to its stats card and back, in place.
+- [ ] Time played, last played, first played — the keeper does not persist `first_played` yet.
+- [ ] The achievement list under them, scrolling inside the card rather than growing it.
+- [ ] No achievement half at all when `tracks_achievements` is false — never an empty list.
+- [ ] Suppress the browser's own context menu, and keep Escape and the cursor ring working while a
+      card is flipped.
+
 ## Saves system — parked until `2.x.y`
 
 Games launched from a cartridge still write their saves to the PC. The goal is the opposite: a

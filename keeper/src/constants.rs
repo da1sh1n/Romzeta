@@ -9,18 +9,12 @@
 
 // ########## KEEPER CONSTANTS ##########
 
-// ========== The Command Line (main.rs) ==========
-
-/// The PID of the game process to keep alive. REQUIRED
-pub const PID_FLAG: &str = "--pid";
-/// The base directory of the game. REQUIRED
-pub const BASE_FLAG: &str = "--base";
-/// The path to the playtime file, if any. Optional.
-pub const PLAYTIME_FLAG: &str = "--playtime";
-
 // ========== The Log (run.rs) ==========
 
-pub const LOG_FILE: &str = "logs/keeper.log";
+/// The keeper's log, relative to the game's base directory.
+pub fn logFile() -> std::path::PathBuf {
+    std::path::Path::new(common::cartridge::LOGS_DIR).join("keeper.log")
+}
 
 // ========== The Keepalive Loop (run.rs) ==========
 

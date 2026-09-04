@@ -13,6 +13,8 @@
 use std::fs;
 use std::path::Path;
 
+use common::cartridge as contract;
+
 use crate::constants::*;
 
 // ========== The Settings Table ==========
@@ -198,7 +200,7 @@ pub fn load(base_dir: &Path) -> Config {
 
     // Two `let else` bail-outs: a missing file and unparseable TOML both mean
     // "run entirely on defaults", which `config` already is.
-    let Ok(contents) = fs::read_to_string(base_dir.join("config.toml")) else {
+    let Ok(contents) = fs::read_to_string(base_dir.join(contract::CONFIG_FILE)) else {
         return config;
     };
     let Ok(table) = contents.parse::<toml::Table>() else {
@@ -313,7 +315,7 @@ pub fn ids(list: &[usize]) -> toml_edit::Value {
 /// Never fatal, and reported only as a log line: a cartridge can sit on a
 /// write-protected stick.
 pub fn store(base_dir: &Path, key: &str, value: toml_edit::Value) {
-    let path = base_dir.join("config.toml");
+    let path = base_dir.join(contract::CONFIG_FILE);
     let Ok(contents) = fs::read_to_string(&path) else {
         common::log::appendLine(
             &base_dir.join(LOG_FILE),

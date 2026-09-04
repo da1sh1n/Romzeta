@@ -51,10 +51,11 @@ Romzeta/
     src/             App code, the UI, and the seed data files
       main.rs          Entry point; one file per job beside it (ui, launch,
                        config, catalog, assets, window, log, constants,
-                       instance, keeper, steam, order, version, tray/, …)
-      index.html       The UI's markup   (baked into the exe at build time)
-      style.css        Its look          (same)
-      app.js           Its behaviour — an ES module importing nine more (same)
+                       content, instance, keeper, steam, order, tray, …)
+      ui/              The web half, baked into the exe at build time:
+        index.html     The UI's markup
+        style.css      Its look
+        app.js         Its behaviour — an ES module importing nine more
       catalog.json     Seed game list — name, exe path, cover image
       config.toml      Seed look & feel
     assets/
@@ -85,10 +86,11 @@ Romzeta/
   installer/         The setup app (Rust + egui) — one self-contained exe
     build.rs         Stages the payload; fails the build if it's missing
     src/
-      main.rs        Entry point and the module map
+      main.rs        Entry point; lib.rs is the module map
       app.rs         Wizard state and the create-vs-edit routing rule
-      ui/            The screens; ui/mod.rs is the shell and the footer
-      payload.rs     The embedded launcher, listener and seed files
+      ui/            The screens; ui/mod.rs is the shell and the footer,
+                     games.rs the per-game ones, listener.rs the PC-side one
+      payload.rs     The embedded launcher, keeper, listener and seed files
       cartridge.rs   The write: copy, catalog, config, launcher
       listener.rs    Job 2 — install folder, Run entry, uninstall
       detect.rs      Finding a game's exe, and measuring the folder
@@ -101,17 +103,21 @@ Romzeta/
     structure.md     Reference for the setup side
     TODO.md          What's left — chiefly a run on real media
   keeper/            The keepalive worker that ships beside the launcher
+    build.rs         Embeds the version info Task Manager shows
     src/
       main.rs        Entry point: --pid, --base, --playtime
       run.rs         The loop: touch the disk, tick playtime, hold the lease
       playtime.rs    The per-game counter
       window.rs      A hidden window, purely to carry the AUMID identity
+      constants.rs   Every constant the crate owns, in one file
     TODO.md          The stats plan
   common/            Log plumbing, UTC dates, UTF-16, the registry, the active-game
-                     lease and the x.y.z contract, shared by every program here
+                     lease, the AppUserModelID that groups all four under one
+                     Task Manager entry, and the x.y.z contract — shared by every
+                     program here
   trust/             Verifying a signature and reading the role out of it
   sigblock/          The appended ROMZETASIG footer: attach, read, strip
-  xtask/             The build tool: release, sign, verify, keygen, version
+  xtask/             The build tool: release, sign, verify, keygen, version, test
   hardware/          The cartridge enclosure — FreeCAD model and notes
   keys/              Trust anchors compiled into the listener at build time
   Cargo.toml         Workspace tying every crate above together
@@ -140,11 +146,13 @@ Romzeta/
    - List them in `catalog.json`:
      ```json
      [
-       { "name": "Elden Ring", "exe": "games/elden_ring/elden_ring.exe", "image": "assets/images/elden_ring.png" }
+       { "name": "Elden Ring", "exe": "games/elden_ring/elden_ring.exe", "image": "assets/images/elden_ring.png", "steam": true }
      ]
      ```
-     Paths are relative to `launcher.exe`'s own folder. Your edits here are **never
-     overwritten** by a rebuild.
+     Paths are relative to `launcher.exe`'s own folder. `steam` is optional and defaults to
+     false — set it for a game whose DRM refuses to start unless the Steam client is up, and
+     the launcher brings Steam up silently first. Your edits here are **never overwritten**
+     by a rebuild.
 
 3. **Ship it** — copy `launcher.exe` and its content folder onto the cartridge (any storage
    device: NVMe, SSD, HDD, USB). They travel together.
@@ -167,8 +175,8 @@ Until the installer ships, setting it up is manual:
 4. Copy the signed `launcher.exe` to the root of the drive, with its `catalog.json`,
    `config.toml`, `games/` and `assets/images/` beside it.
 5. Run `listener.exe` from wherever you placed it. It stays in the background — no window,
-   no tray icon — and starts the launcher when you plug the cartridge in. `listener.log`,
-   right beside it, says what it did.
+   just a tray icon whose menu is *Open log* and *Exit* — and starts the launcher when you
+   plug the cartridge in. `listener.log`, right beside it, says what it did.
 
 There is nothing to pair. The listener accepts a cartridge when the `launcher.exe` at its root
 carries a signature from a key that listener was built with, and refuses everything else — so
@@ -221,10 +229,13 @@ See [installer/structure.md](installer/structure.md) for how it decides all of t
 2. Otherwise run `launcher.exe` yourself.
 3. The launcher opens full of cover art:
    - **Click a cover** to launch that game.
-   - **Click the close button** (top-right) to exit.
-4. Tweak the look by editing `config.toml` — background color, spacing, corner rounding,
-   card shadow, and whether game titles show under the covers. Blank or invalid values
-   fall back to sensible defaults.
+   - **Click the close button** — the last item in the toolbar across the top — to exit.
+4. Once the game is up the launcher **hides itself to a tray icon** rather than exiting.
+   Click the icon to bring it back and start something else.
+5. Tweak the look by editing `config.toml` — the three-colour palette, spacing, corner
+   rounding, card shadow, the moving background (`particles`, `fog` or `simple`), the
+   cursor ring, how far unselected covers fade, and whether the selected game's name shows
+   under the row. Blank or invalid values fall back to sensible defaults.
 
 ---
 

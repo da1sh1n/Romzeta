@@ -7,7 +7,7 @@ license = "GPL-3.0-or-later"
 [dependencies]
 # Log timestamps and rotation, and the x.y.z command line, shared with the
 # listener and the installer.
-common = { path = "../common" }
+common = { path = "../common", features = ["catalog"] }
 
 # Reading this exe's own signature back out, for `--signature`. The signature
 # itself is put there by `xtask sign` after linking; nothing at runtime writes
@@ -34,8 +34,6 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_Threading",
-    # Registering the tray window's class. See tray.rs.
-    "Win32_System_LibraryLoader",
     # Rounding the window's corners: the Windows 11 way (Dwm) and the Windows 10
     # fallback (Gdi's regions, applied through user32). See window::round_corners.
     "Win32_Graphics_Dwm",

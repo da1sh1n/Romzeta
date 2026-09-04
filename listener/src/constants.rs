@@ -15,13 +15,9 @@ pub const LOG_FILE: &str = "listener.log";
 
 // ========== What A Cartridge Carries (trust.rs) ==========
 
-/// The binary a cartridge is expected to carry, by name. Hardcoded per platform
-/// rather than named by the disk, so there is no attacker-supplied path to
-/// sandbox in the first place.
-#[cfg(windows)]
-pub const LAUNCHER_NAME: &str = "launcher.exe";
-#[cfg(not(windows))]
-pub const LAUNCHER_NAME: &str = "launcher";
+/// Re-exported so `crate::constants::LAUNCHER_NAME` keeps working for
+/// `tests/volume.rs` and `tests/trust.rs`, outside this block's remit.
+pub use common::cartridge::LAUNCHER_NAME;
 
 // ========== Waiting For Cartridges (trigger/windows.rs) ==========
 
@@ -39,12 +35,6 @@ pub const INSTANCE_MUTEX: &str = r"Local\Romzeta.CartridgeListener";
 #[cfg(windows)]
 pub const WINDOW_CLASS: &str = "Romzeta.ListenerWindow";
 
-/// `uID` `Shell_NotifyIconW` identifies this icon by, alongside `hWnd`. One
-/// tray icon per process, so any constant does — it only has to be stable
-/// between the `NIM_ADD` in `addTrayIcon` and the `NIM_DELETE` on shutdown.
-#[cfg(windows)]
-pub const TRAY_ICON_UID: u32 = 1;
-
 /// The icon resource `build.rs` compiles in via `winres`, which assigns id
 /// `1` to the first (and only) `set_icon` call.
 ///
@@ -56,13 +46,9 @@ pub const TRAY_ICON_UID: u32 = 1;
 #[cfg(windows)]
 pub const TRAY_ICON_RESOURCE: *const u16 = std::ptr::without_provenance(1);
 
-/// Custom message `Shell_NotifyIconW` delivers mouse activity on the tray
-/// icon through. `WM_APP` is the documented start of the range an
-/// application is free to define its own messages in.
 #[cfg(windows)]
-pub const WM_TRAYICON: u32 = windows_sys::Win32::UI::WindowsAndMessaging::WM_APP + 1;
-
+pub const MENU_ITEMS: [&str; 2] = ["Open log", "Exit"];
 #[cfg(windows)]
-pub const ID_MENU_OPEN_LOG: u32 = 1;
+pub const MENU_OPEN_LOG: usize = 0;
 #[cfg(windows)]
-pub const ID_MENU_EXIT: u32 = 2;
+pub const MENU_EXIT: usize = 1;

@@ -15,32 +15,24 @@ use std::path::Path;
 use std::ptr;
 use std::time::{Duration, Instant};
 
-use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HWND, LPARAM, LRESULT, POINT, WPARAM,
-};
+use common::win32::{Tray, TrayIcon, WM_TRAYICON};
+use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives, SYNCHRONIZE};
 use windows_sys::Win32::System::Diagnostics::Debug::{SEM_FAILCRITICALERRORS, SetErrorMode};
-use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::System::Threading::{CreateMutexW, OpenMutexW};
+use windows_sys::Win32::System::Threading::OpenMutexW;
 use windows_sys::Win32::System::WindowsProgramming::{DRIVE_FIXED, DRIVE_REMOVABLE};
-use windows_sys::Win32::UI::Shell::{
-    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
-    ShellExecuteW,
-};
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CW_USEDEFAULT, CreatePopupMenu, CreateWindowExW, DBT_DEVICEARRIVAL,
-    DBT_DEVTYP_VOLUME, DBTF_NET, DEV_BROADCAST_HDR, DEV_BROADCAST_VOLUME, DefWindowProcW,
-    DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW, LoadIconW, MF_STRING,
-    MSG, PostQuitMessage, RegisterClassW, SW_SHOWNORMAL, SetForegroundWindow, TPM_RETURNCMD,
-    TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_CONTEXTMENU, WM_DESTROY, WM_DEVICECHANGE,
-    WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPED,
+    DBT_DEVICEARRIVAL, DBT_DEVTYP_VOLUME, DBTF_NET, DEV_BROADCAST_HDR, DEV_BROADCAST_VOLUME,
+    DefWindowProcW, DestroyWindow, PostQuitMessage, SW_SHOWNORMAL, WM_CONTEXTMENU, WM_DESTROY,
+    WM_DEVICECHANGE, WM_RBUTTONUP,
 };
 
 use common::utf16::wide;
 
 use crate::constants::{
-    ID_MENU_EXIT, ID_MENU_OPEN_LOG, INSTANCE_MUTEX, LAUNCH_GRACE_MILLISECONDS, TRAY_ICON_RESOURCE,
-    TRAY_ICON_UID, WINDOW_CLASS, WM_TRAYICON,
+    INSTANCE_MUTEX, LAUNCH_GRACE_MILLISECONDS, MENU_EXIT, MENU_ITEMS, MENU_OPEN_LOG,
+    TRAY_ICON_RESOURCE, WINDOW_CLASS,
 };
 use crate::log::Log;
 use crate::volume;
@@ -79,7 +71,7 @@ thread_local! {
 /// mounted, then pumps messages. Returns early, launching nothing, if another
 /// instance already holds the mutex.
 pub fn run(log: Log) {
-    let Some(_instance) = acquireSingleInstance() else {
+    let Some(_instance) = common::win32::singleInstance(INSTANCE_MUTEX) else {
         // The `Run` entry can fire twice across a fast logoff/logon, and two
         // listeners racing on one arrival means two launchers on screen.
         log.line("another listener is already running; exiting");
@@ -97,13 +89,14 @@ pub fn run(log: Log) {
         launched: None,
     }));
 
-    let Some(hwnd) = createHiddenWindow() else {
+    let Some(hwnd) = common::win32::hiddenWindow(WINDOW_CLASS, "Romzeta Listener", Some(wndProc))
+    else {
         logLine("FAILED to create the listener window; exiting");
         return;
     };
 
     // A courtesy, not a requirement: a cartridge is still launched without one.
-    if !addTrayIcon(hwnd) {
+    if !Tray::new(hwnd).add(TrayIcon::Resource(TRAY_ICON_RESOURCE), "Romzeta Listener") {
         logLine("failed to add the tray icon; continuing without one");
     }
 
@@ -111,7 +104,7 @@ pub fn run(log: Log) {
     // missed. The launcher check then stops it re-launching what the sweep caught.
     startupSweep();
 
-    messageLoop();
+    common::win32::messageLoop();
     logLine("listener stopped");
 }
 
@@ -129,96 +122,7 @@ fn logLine(text: &str) {
     withState(|state| state.log.line(text));
 }
 
-// ========== Single Instance ==========
-
-/// Holds the process-wide mutex; dropping it (or exiting) frees the name.
-struct InstanceGuard(HANDLE);
-
-impl Drop for InstanceGuard {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe { CloseHandle(self.0) };
-        }
-    }
-}
-
-/// `Some` if this is the first instance, `None` if one is already running.
-/// Same named-mutex pattern as `../../../launcher/src/main.rs`.
-fn acquireSingleInstance() -> Option<InstanceGuard> {
-    let name = wide(INSTANCE_MUTEX);
-    unsafe {
-        // A named mutex, not a lock file: the kernel frees the name when the
-        // process dies, however it dies, so a crash cannot leave a stale claim.
-        let handle = CreateMutexW(ptr::null(), 0, name.as_ptr());
-        if handle.is_null() {
-            // Never let the guard itself become a reason not to run.
-            return Some(InstanceGuard(handle));
-        }
-        // CreateMutexW succeeds either way; only the error code separates
-        // "created it" from "opened someone else's".
-        if GetLastError() == ERROR_ALREADY_EXISTS {
-            CloseHandle(handle);
-            return None;
-        }
-        Some(InstanceGuard(handle))
-    }
-}
-
 // ========== Window And Message Loop ==========
-
-/// Registers the class and creates the (never shown) top-level window.
-///
-/// Top-level rather than `HWND_MESSAGE`: broadcast `WM_DEVICECHANGE` reaches
-/// nothing else, and the failure is silent. It is never passed to `ShowWindow`,
-/// so it stays invisible with no taskbar button.
-fn createHiddenWindow() -> Option<HWND> {
-    unsafe {
-        let instance = GetModuleHandleW(ptr::null());
-        let class_name = wide(WINDOW_CLASS);
-
-        let mut class: WNDCLASSW = std::mem::zeroed();
-        class.lpfnWndProc = Some(wndProc);
-        class.hInstance = instance;
-        class.lpszClassName = class_name.as_ptr();
-        if RegisterClassW(&class) == 0 {
-            return None;
-        }
-
-        let title = wide("Romzeta Listener");
-        let hwnd = CreateWindowExW(
-            0,
-            class_name.as_ptr(),
-            title.as_ptr(),
-            WS_OVERLAPPED,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            0,
-            0,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            instance,
-            ptr::null(),
-        );
-        (!hwnd.is_null()).then_some(hwnd)
-    }
-}
-
-/// Blocks in `GetMessage` until the window is destroyed or the session ends.
-/// This call, and not a timer, is why the idle CPU cost is zero.
-fn messageLoop() {
-    let mut message: MSG = unsafe { std::mem::zeroed() };
-    loop {
-        // 0 = WM_QUIT, -1 = error. Either way there is nothing left to pump.
-        let result = unsafe { GetMessageW(&mut message, ptr::null_mut(), 0, 0) };
-        if result <= 0 {
-            return;
-        }
-        unsafe {
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
-    }
-}
 
 /// Handles device arrivals, tray clicks and destruction, and hands everything
 /// else to the default handler. The return value's meaning is per-message.
@@ -244,12 +148,12 @@ unsafe extern "system" fn wndProc(
             // the old way: `lparam` is the mouse message itself, the same
             // value a click on a real window would have arrived as.
             if matches!(lparam as u32, WM_RBUTTONUP | WM_CONTEXTMENU) {
-                unsafe { showTrayMenu(hwnd) };
+                showTrayMenu(hwnd);
             }
             0
         }
         WM_DESTROY => {
-            removeTrayIcon(hwnd);
+            Tray::new(hwnd).remove();
             unsafe { PostQuitMessage(0) };
             0
         }
@@ -259,87 +163,15 @@ unsafe extern "system" fn wndProc(
 
 // ========== Tray Icon ==========
 
-/// Adds the tray icon. `false` if the shell refused it, which is not fatal —
-/// see the call site in `run`.
-fn addTrayIcon(hwnd: HWND) -> bool {
-    unsafe {
-        let instance = GetModuleHandleW(ptr::null());
-        let icon = LoadIconW(instance, TRAY_ICON_RESOURCE);
-
-        let mut data: NOTIFYICONDATAW = std::mem::zeroed();
-        data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-        data.hWnd = hwnd;
-        data.uID = TRAY_ICON_UID;
-        data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-        data.uCallbackMessage = WM_TRAYICON;
-        data.hIcon = icon;
-        setTip(&mut data.szTip, "Romzeta Listener");
-
-        Shell_NotifyIconW(NIM_ADD, &data) != 0
-    }
-}
-
-/// Removes the tray icon on the way out, so it doesn't linger as a stale
-/// entry in the hidden-icons flyout after the process has already exited.
-fn removeTrayIcon(hwnd: HWND) {
-    unsafe {
-        let mut data: NOTIFYICONDATAW = std::mem::zeroed();
-        data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-        data.hWnd = hwnd;
-        data.uID = TRAY_ICON_UID;
-        Shell_NotifyIconW(NIM_DELETE, &data);
-    }
-}
-
-/// Copies `text` (truncated to fit) into a `NOTIFYICONDATAW` fixed-size
-/// UTF-16 field, NUL-terminated.
-fn setTip(field: &mut [u16], text: &str) {
-    let wide = wide(text);
-    let n = wide.len().min(field.len());
-    field[..n].copy_from_slice(&wide[..n]);
-    // `wide()` already NUL-terminates, so this only bites when truncation above
-    // cut that NUL off the end.
-    field[n - 1] = 0;
-}
-
 /// Builds and shows the right-click menu at the cursor, then acts on
 /// whichever item (if any) was picked.
-unsafe fn showTrayMenu(hwnd: HWND) {
-    unsafe {
-        let menu = CreatePopupMenu();
-        if menu.is_null() {
-            return;
-        }
-        let open_log = wide("Open log");
-        let exit = wide("Exit");
-        AppendMenuW(menu, MF_STRING, ID_MENU_OPEN_LOG as usize, open_log.as_ptr());
-        AppendMenuW(menu, MF_STRING, ID_MENU_EXIT as usize, exit.as_ptr());
-
-        let mut point: POINT = std::mem::zeroed();
-        GetCursorPos(&mut point);
-
-        // A window that isn't the foreground window never gets the message that
-        // dismisses a popup menu when the user clicks elsewhere — the classic
-        // "menu that won't go away" bug. Nothing else ever activates this one.
-        SetForegroundWindow(hwnd);
-        let cmd = TrackPopupMenu(
-            menu,
-            TPM_RETURNCMD | TPM_RIGHTBUTTON,
-            point.x,
-            point.y,
-            0,
-            hwnd,
-            ptr::null(),
-        );
-        DestroyMenu(menu);
-
-        match cmd as u32 {
-            ID_MENU_OPEN_LOG => openLogFile(),
-            ID_MENU_EXIT => {
-                DestroyWindow(hwnd);
-            }
-            _ => {}
-        }
+fn showTrayMenu(hwnd: HWND) {
+    match Tray::new(hwnd).showMenu(&MENU_ITEMS) {
+        Some(MENU_OPEN_LOG) => openLogFile(),
+        Some(MENU_EXIT) => unsafe {
+            DestroyWindow(hwnd);
+        },
+        _ => {}
     }
 }
 

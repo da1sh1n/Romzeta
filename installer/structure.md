@@ -21,9 +21,21 @@ side-by-side files.**
 
 - **Its own crate**, `installer/`, sibling to `launcher/` and `listener/`, tied together by
   the root `Cargo.toml` workspace.
-- **`eframe` / `egui`** for the UI: pure Rust, statically linked, no runtime dependency.
-  This is the reason it is not a webview like the launcher — a WebView2-based installer that
-  finds the runtime missing has no way to bootstrap itself with no internet.
+- **`egui`** for the UI: pure Rust, statically linked, no runtime dependency. This is the
+  reason it is not a webview like the launcher — a WebView2-based installer that finds the
+  runtime missing has no way to bootstrap itself with no internet.
+
+  **Not `eframe`**, and that is a size decision rather than a taste one. `eframe` asks for
+  `egui-winit`'s `clipboard` and `links` features in its own manifest, and cargo features are
+  additive, so nothing downstream can turn them off: every installer built on it links
+  `arboard` (and `image`, and `png`, for pasting *pictures*) and `webbrowser` (and `url`,
+  `idna` and seven `icu_*` crates of Unicode tables, for opening links this program does not
+  contain). `egui_glow` offers the same integration with those behind flags that are left
+  off. What eframe did on top of it — open a window, run an event loop — is `src/shell.rs`,
+  and the clipboard is two Win32 calls in `src/clipboard.rs`. Around 2 MB of binary the one
+  file a user downloads no longer carries. `egui`'s `default_fonts` is off for the same
+  reason: four embedded typefaces at 1.4 MB, where `src/font.rs` reads the desktop's own UI
+  font off the disk and looks more at home for it.
 - `#![windows_subsystem = "windows"]`, no console window (same as the launcher).
 - **Windows for v1.** The Linux equivalents of every Windows-shaped step (`Program Files`,
   registry autostart, `launcher.exe`) are noted under [Future](#future) so the design
@@ -37,26 +49,39 @@ side-by-side files.**
 installer/
   build.rs        finds the payload, stages it in OUT_DIR, fails loudly if it's missing
   src/
-    main.rs       entry point and the module map
+    main.rs       entry point: --version / --signature / --help, then the window
+    lib.rs        the module list; a library so tests/ can reach inside
     app.rs        wizard state, and the create-vs-edit routing rule
-    ui/           the screens; ui/mod.rs holds the shell and the only footer
+    ui/           the screens: mod.rs is the shell and the only footer, games.rs the
+                  per-game screens, listener.rs the PC-side one
     work.rs       the worker thread, and how the UI hears from it
-    payload.rs    the embedded launcher, listener and seed files
+    payload.rs    the embedded launcher, keeper, listener and seed files
     volume.rs     which drives can be cartridges, and which already are
     detect.rs     finding the game's exe inside a folder, and measuring it
+    steam.rs      a game's Steam app id, and where steam_appid.txt belongs
     image.rs      cover dimensions, for the 2:3 warning
     catalog.rs    catalog.json — the file the launcher reads
     cartridge.rs  the write itself: copy, catalog, config, launcher
+    wake.rs       reading the drive a few times before anything is written to it
     listener.rs   job 2 — install folder, Run entry, uninstall
     copy.rs       the cancellable, measured file copy underneath it all
     version.rs    x.y.z — its own, and the one a cartridge's signature states
-    autoplay.rs   the Windows AutoRun nudge
-    font.rs, image.rs, clipboard.rs, reg.rs, shell.rs   the small OS errands
+    autoplay.rs   the Windows AutoPlay choice: read, suppress, restore
+    constants.rs  every constant the crate owns, in one file
+    font.rs, clipboard.rs, shell.rs                     the small OS errands
+  tests/          the crate's tests, run through the workspace's testkit crate
 ```
+
+There is no `reg.rs` here any more. The registry wrapper is `common::reg`, shared with the
+launcher — `autoplay.rs`, `listener.rs` and `font.rs` are the callers on this side.
 
 ### Embedded payload
 
-The installer carries its outputs inside itself, via `include_bytes!` / `rust-embed`:
+The installer carries its outputs inside itself, staged by `build.rs` and pulled in with
+`include_bytes!`. The three binaries are **zlib-compressed** on the way in and inflated at
+the moment they are written; `build.rs` records each one's real size alongside it, because
+the free-space check has to answer "will this fit on the drive" and a compressed length does
+not. `payload::unpack` checks the inflated length against that number.
 
 ```text
 installer.exe
@@ -71,21 +96,23 @@ The listener used to have a seed config carried alongside these, because pairing
 its `keys` list. The listener has no config file at all now — trust is compiled into it — so
 there is nothing to seed and nothing to merge.
 
-**Both embedded binaries are checked at build time**: `build.rs` verifies each one's signature
-against `keys/*.pub` *and* that its signature declares the role its slot is for, through the
-same [`../trust/`](../trust/) crate the listener uses at runtime. Getting the sign-then-build
-order wrong would otherwise produce an installer that works, writes a cartridge that looks
-right, and is silently ignored by every listener on earth.
+**All three embedded binaries are checked at build time**: `build.rs` verifies each one's
+signature against `keys/*.pub` *and* that its signature declares the role its slot is for
+(`LAUNCHER_ROLE`, `LISTENER_ROLE`, `KEEPER_ROLE`), through the same
+[`../trust/`](../trust/) crate the listener uses at runtime. The check runs before
+compression, since nothing downstream can verify a packed launcher. Getting the
+sign-then-build order wrong would otherwise produce an installer that works, writes a
+cartridge that looks right, and is silently ignored by every listener on earth.
 
-Build-ordering consequence: **launcher and listener must be built `--release` before the
-installer**, which `build.rs` enforces — a missing artifact fails the build with the command
-to run, rather than producing an installer that ships nothing.
+Build-ordering consequence: **launcher, keeper and listener must be built `--release` before
+the installer**, which `build.rs` enforces — a missing artifact fails the build with the
+command to run, rather than producing an installer that ships nothing.
 
 The workspace's `default-members` leaves the installer out for the same reason, so the two
 steps happen in the right order by default:
 
 ```sh
-cargo build --release               # launcher + listener
+cargo build --release               # launcher + keeper + listener
 cargo build --release -p installer  # embeds what that produced
 ```
 
@@ -93,6 +120,11 @@ In a single all-crates invocation nothing orders the installer's build script af
 launcher's link step — there is no dependency edge between them, and binary-artifact
 dependencies are still unstable — so it is a race that usually goes your way. Two commands
 is cheaper than a flaky one.
+
+Neither command signs anything, so neither produces a shippable installer on its own.
+`cargo run -p xtask -- release` is what actually builds a release: it runs those two steps
+with the signing between them, in the one order that works. See
+[`../SIGNING.md`](../SIGNING.md) §4.
 
 `ROMZETA_PAYLOAD_OPTIONAL=1` builds an installer with empty binary slots, for working on the
 UI without a release build in front of every iteration. That build is not shippable and says
@@ -177,10 +209,20 @@ Installing the listener (job 2) is independent of both and can be run on its own
 2. **Name the cartridge.** See [Naming a cartridge](#naming-a-cartridge). Seeded with the name
    the drive already has, so this is a step you can walk straight past.
 3. **Add games.** The user picks one or more game folders.
-4. **Per game:** auto-find the executable (below), then pick a cover image.
-5. **Review**, check free space, then copy — with a progress bar on a worker thread. Game
-   folders run to many GB; the UI must stay responsive and the copy must be cancellable.
+4. **Per game:** auto-find the executable (below), pick a cover image, and say whether the
+   game needs Steam — see [Steam games](#steam-games).
+5. **Review**, check free space, **wake the drive**, then copy — with a progress bar on a
+   worker thread. Game folders run to many GB; the UI must stay responsive and the copy must
+   be cancellable.
 6. **Write the cartridge layout**, then set the drive's name.
+
+### Waking the drive
+
+`wake.rs` reads the target root a few times (`PROBES`, spaced by `PROBE_GAP`) before
+anything is written, and stops at the first round it cannot. A cartridge that has spun down,
+or a drive letter that went stale while the plan was being assembled, is found here — rather
+than part-way through a multi-gigabyte copy, with half a game on the disk and a rollback to
+run. It costs a fraction of a second on a drive that is fine.
 
 There is no key step. A cartridge's identity is the signature inside the `launcher.exe` the
 installer carries, so there is nothing for the user to choose or keep in step.
@@ -283,7 +325,8 @@ Matches the launcher's deployed layout
   config.toml      <- look and feel only
   catalog.json     <- the game list the installer just built
   assets/images/   <- one cover per game
-  games/           <- the copied game installs
+  games/           <- the copied game installs, each with a steam_appid.txt beside its
+                      exe when the game was marked as needing Steam
 ```
 
 There is **no identity file**. What makes this a cartridge is the minisign signature carried
@@ -338,11 +381,32 @@ extension is never consulted, because cover art is routinely an animated WebP sa
 `.png`. Anything unrecognised produces no warning at all, rather than a rule that would
 reject formats the webview renders perfectly well.
 
+### Steam games
+
+A game whose DRM refuses to start without the Steam client gets a checkbox, and ticking it
+does two things: the catalog entry carries `steam: true`, so the launcher brings the client
+up before spawning it, and a `steam_appid.txt` is written beside the copied exe.
+
+That file is the whole reason this is more than a boolean. A copied game is **outside its
+Steam library**, so `steam_api.dll` can no longer work out which app it is — the id has to
+travel with it. `steam::detect` reads it off this PC in the one order that is not a guess:
+a `steam_appid.txt` the game already ships beside its exe, then one at the game's root, then
+Steam's own manifest for the install. Every source is a file Steam or the game itself wrote,
+so `None` means "ask the user", never "try harder" — and the screen says which of the two it
+found, so a number nobody typed does not appear unexplained. Typed by hand, an id has to be
+digits and non-zero: zero is what an empty or malformed manifest parses to, and no game has
+it.
+
+`steam::appidFileIn` decides where the file lands: **beside the exe on the cartridge**, which
+is the path `steam_api.dll` reads.
+
 ### Catalog writing
 
-`catalog.json` is the array of `{ name, exe, image }` the launcher deserializes into its
-`Game` struct. Paths are **relative to the cartridge root** (`games/bg3/bg3.exe`,
+`catalog.json` is the array of `{ name, exe, image, steam }` the launcher deserializes into
+its `Game` struct. Paths are **relative to the cartridge root** (`games/bg3/bg3.exe`,
 `assets/images/bg3.png`), and `name` defaults to the game folder's name, editable by the user.
+`steam` is skipped when false, so an ordinary game's entry is the same three keys it always
+was and a cartridge stays readable by eye.
 
 ## Job 2 — Install the listener
 
@@ -385,7 +449,16 @@ unrelated things:
      `/etc/udev/rules.d/99-romzeta.rules` and running `udevadm control --reload`. Note the
      elevation shape inverts: this needs **root** for a system-wide rules directory, where
      Windows needs no elevation at all.
-4. **Repair / uninstall:** detect an existing install and offer to replace or remove it,
+4. **Get Windows out of the way.** A listener that starts the launcher is only half of
+   "plugging a cartridge in works" — the other half is nothing else opening on top of it.
+   The screen says what Windows currently does on a drive arrival (opens a folder, asks, or
+   nothing) and offers to change it: `autoplay::suppress` backs the previous choice up under
+   our own key first, so `restore` can put back exactly what was there, including "there was
+   nothing here" — writing an empty string instead would leave AutoPlay with a chosen
+   handler of `""`. It is **reported, never fatal**: at that point the listener is installed
+   and working, and a failure here is a worse-looking insert rather than a failed install.
+   AutoPlay is put back only when the **last** listener on this PC is removed.
+5. **Repair / uninstall:** detect an existing install and offer to replace or remove it,
    including one left in a folder an earlier build used. Removing means deleting the folder
    *and* undoing step 3 — the `Run` entry on Windows, or the rule file plus a
    `udevadm control --reload` on Linux. The `Run` entry is only cleared when it points at
@@ -478,7 +551,8 @@ Signature-based trust used to be the second item here. It shipped — see
 ## Status / roadmap
 
 - [x] Root `Cargo.toml` workspace tying `launcher` + `listener` + `installer`.
-- [x] `installer` crate scaffold: `eframe`/`egui`, `windows_subsystem`. **No UAC manifest** —
+- [x] `installer` crate scaffold: `egui` on `egui_glow` with its own window and event loop,
+      `windows_subsystem`. **No UAC manifest** —
       see [Elevation](#elevation).
 - [x] Embedded payload + build-time check that every artifact is present, signed by a key the
       embedded listener accepts, and signed *as the program its slot is for*.
@@ -490,8 +564,14 @@ Signature-based trust used to be the second item here. It shipped — see
 - [x] Cartridge write: threaded `games/` copy with progress + cancel, covers under
       `assets/images/`, catalog, `config.toml`, and the signed `launcher.exe` that is the
       cartridge's whole identity.
+- [x] Steam games: the app id found on this PC rather than guessed, `steam_appid.txt` written
+      beside the copied exe, and the flag carried in the catalog.
+- [x] The drive woken and re-read before a write starts, so a stale letter or a spun-down
+      disk fails before the copy rather than during it.
 - [x] Listener install into `%LOCALAPPDATA%\Romzeta` — the only location — and a `Run` entry on
       Windows. Installs left by an earlier build elsewhere are cleared out.
+- [x] AutoPlay suppression, with the previous choice backed up and restored when the last
+      listener is removed.
 - [x] Edit mode: add games, remove games, rename the cartridge, refresh a stale launcher.
 - [x] Change a game already on the cartridge — its name, its executable, its Steam flag and app
       id, its cover — without copying the folder again. The slug never moves, so a rename is a

@@ -33,9 +33,10 @@ see [Execution models](#execution-models).
   document.
 - Everything downstream of "a volume showed up" is **shared, OS-agnostic code** — one
   implementation of the trust check and the launch, called by both triggers.
-- `#![windows_subsystem = "windows"]`, two workspace dependencies (`sigblock`, `trust`) plus
-  `windows-sys` on Windows only. Nothing here needs a UI framework, and on a non-Windows
-  build those two crates are the entire dependency tree — `toml` left with the config file.
+- `#![windows_subsystem = "windows"]`, three workspace dependencies (`sigblock`, `trust`,
+  `common`) plus `windows-sys` and `winres` on Windows only. Nothing here needs a UI
+  framework, and on a non-Windows build those three crates are the entire dependency tree —
+  `toml` left with the config file.
 
 ### Deployed layout
 
@@ -68,16 +69,18 @@ listener/
   build.rs         <- bakes keys/*.pub in as ANCHORS; no keys, no compile
   src/
     main.rs        <- entry point, folder resolution, argument handling
-    volume.rs      <- THE SHARED CORE: handleVolume(root, log)
+    lib.rs         <- the module list; a library so tests/ can reach inside
+    volume.rs      <- THE SHARED CORE: handleVolume(root, log, announce)
     trust.rs       <- which file to check, holding it still, and saying why not
     version.rs     <- x.y.z: its own, and a launcher's as its signature states it
     constants.rs   <- every constant the crate owns, in one file
-    alert.rs       <- the one thing it ever says out loud
+    alert.rs       <- the message box, for the refusals worth explaining
     log.rs         <- the activity log
     trigger/
       mod.rs       <- cfg selects one of the two below
       windows.rs   <- resident: hidden top-level window + GetMessage loop
       linux.rs     <- one-shot: udev handoff — placeholder, not built
+  tests/           <- the crate's tests, run through the workspace's testkit crate
 ```
 
 The decision itself is not in this crate at all: [`../trust/`](../trust/) is a workspace crate
@@ -93,21 +96,52 @@ USB stick. So detection is **"a new volume mounted"**, never a specific USB VID/
 
 ## Responsibilities / flow
 
-Steps 2–5 are the **shared core** — identical on both platforms. Only step 1 differs, and it
+Steps 2–7 are the **shared core** — identical on both platforms. Only step 1 differs, and it
 differs a lot; see [Execution models](#execution-models).
 
 1. A **volume becomes available** — however this platform learns about that.
-2. Look for a **`launcher.exe`** at the volume root, and open it so nothing else can write
+2. **Is a game already running?** If the shared lease `common::lease` names a live pid,
+   stop here — see [The active-game lease](#the-active-game-lease).
+3. Look for a **`launcher.exe`** at the volume root, and open it so nothing else can write
    to or delete it while we decide.
-3. **Verify its signature** against the keys compiled into this build, and require the
+4. **Verify its signature** against the keys compiled into this build, and require the
    signature to declare itself a *launcher* (see [Trust](#trust)).
-4. **Read its version out of that same signature** — authenticated, so this costs nothing
+5. **Read its version out of that same signature** — authenticated, so this costs nothing
    and asks the binary nothing.
-5. If it verified, **launch it**, still holding the handle from step 2.
-6. Otherwise, ignore the volume and log why.
+6. **Compare project majors.** A launcher whose `x` differs from this listener's is refused
+   even though it is genuine — see [The version gate](#the-version-gate).
+7. If it got this far, **launch it**, still holding the handle from step 3.
+8. Otherwise, ignore the volume, log why, and — for the refusals worth explaining — say so
+   in a message box (see [Saying why](#saying-why)).
 
 The order is the security property, not a style choice: nothing is executed at any point
 before the last step.
+
+### The active-game lease
+
+The keeper writes a lease naming the running game's pid, and the listener reads it before it
+looks at anything else. While that pid is alive, no volume starts a launcher: someone
+unplugging and replugging a drive mid-game, or plugging a second cartridge in, would
+otherwise get a gallery thrown over the top of what they are playing.
+
+A lease whose pid is gone is **cleared here rather than trusted or waited on**: the keeper
+clears its own on the way out, and a keeper that was killed would otherwise lock this PC out
+of every cartridge until someone found the file. The check is `common::lease::processExists`,
+so a stale lease costs one existence check and then deletes itself.
+
+### The version gate
+
+Two genuine programs that cannot work together is a different failure from an untrusted one,
+and it is the one a user is most likely to hit — an old cartridge meeting a new PC.
+`project_version` in the workspace `Cargo.toml` is the number that has to match, `x` in every
+program's `x.y.z`; see the root [`../Cargo.toml`](../Cargo.toml) for the contract.
+
+The launcher's `x` comes out of the same signature the trust check just read, so this costs
+nothing and still asks the binary nothing. Differing majors are logged with both numbers and
+the anchor that signed it, and announced: both halves are genuine, so "not trusted" would be
+a lie and silence would look like a dead cartridge. A signature carrying no parseable version
+at all is logged and **started anyway** — that is a launcher too old to state one, not a
+mismatch.
 
 ## Execution models
 
@@ -147,12 +181,12 @@ The asymmetry stops at the trigger. Both platforms call one OS-agnostic entry po
 trust logic exists exactly once:
 
 ```text
-handleVolume(root: &Path) -> Outcome
-  read <root>/launcher.exe (locked)  →  verify signature + role  →  version from the
-  signed comment  →  spawn it
+handleVolume(root: &Path, log: &Log, announce: Announce) -> Outcome
+  no game holds the lease  →  read <root>/launcher.exe (locked)  →  verify signature +
+  role  →  version from the signed comment  →  majors match  →  spawn it
 ```
 
-That is steps 2–6 of [Responsibilities / flow](#responsibilities--flow) in full. **Do not
+That is steps 2–8 of [Responsibilities / flow](#responsibilities--flow) in full. **Do not
 reimplement any of it per platform** — a Windows-only bug in the signature check is exactly
 the failure this split is meant to prevent.
 
@@ -175,8 +209,23 @@ A hidden window and a message loop. It costs a few megabytes and nothing else.
   "it only works if you plug it in after logging in" — a bug that looks like flakiness.
 - **Single-instance guard** — reuse the named-mutex pattern already proven in
   [`../launcher/src/instance.rs`](../launcher/src/instance.rs) (`Local\Romzeta.CartridgeLauncher`, via
-  `windows-sys`) under its own name. The `Run` entry can fire twice across a fast
-  logoff/logon, and two listeners racing to launch the same cartridge means two launchers.
+  `windows-sys`) under its own name, `Local\Romzeta.CartridgeListener`. The `Run` entry can
+  fire twice across a fast logoff/logon, and two listeners racing to launch the same
+  cartridge means two launchers.
+- **Don't start a second gallery.** Before a volume is touched at all, two questions: is a
+  launcher already holding *its* mutex (`launcherIsOpen`, which **opens** the name and never
+  creates it — creating it here would leave the listener holding the launcher's own lock),
+  and did this listener spawn one within `LAUNCH_GRACE_MILLISECONDS` (5 s)? The grace window
+  exists purely to cover the gap before a spawned launcher reaches its own
+  `instance::acquire`, which is exactly where a flaky USB link's repeat arrivals land. Only
+  a volume that really produced a launcher opens that window — a stranger's USB stick must
+  not hold off the cartridge plugged in behind it.
+- **A tray icon**, added once the window exists and removed on the way out so it can't
+  linger as a stale entry in the hidden-icons flyout. Right-click gives **Open log** (via
+  `ShellExecuteW`'s `open` verb on `listener.log`, whatever the user has associated with
+  `.log`) and **Exit**. It is the only visible thing this program has: without it a
+  background process with no window and no console is one a user can neither inspect nor
+  stop. The icon failing to appear is logged and not fatal.
 - `#![windows_subsystem = "windows"]` — no console window, same as the launcher.
 
 ### Linux — reactive, one-shot
@@ -295,14 +344,43 @@ Every refusal is logged with its reason, and they are deliberately different fro
 | malformed | a signature block that is not a minisign signature |
 | untrusted | correctly signed, by a key this build does not accept. The interesting one, and the only refusal whose log line names the anchors. |
 | wrong role | genuinely signed, and not as a launcher |
+| version mismatch | trusted, and built for a different project major — see [The version gate](#the-version-gate) |
+| a game is already running | nothing was looked at: the lease is held, and this is the first thing checked |
+
+The last two are not signature refusals and are decided outside `trust.rs`; they are in the
+table because from the outside they are the same event — a cartridge that did not start, and
+a line in the log saying why.
 
 `listener.exe --signature` prints this build's own signature and the keys it trusts, which is
 how to find out what a given copy will accept without plugging anything in.
 
+### Saying why
+
+The log answers "why didn't it start?" only for someone who knows to look. For the refusals
+where the user has something to act on, the listener also puts a message box up:
+`Refusal::explain` writes the sentence, and returning `None` from it is how a refusal opts
+out. Two do: **no launcher at the root**, the ordinary case for every USB stick anyone ever
+plugs in, and **unreadable**, which is usually a drive still settling. Announcing either
+would make a background program that pesters you for plugging anything in at all.
+
+`Announce` on `handleVolume` decides what a given caller may do with that sentence, and all
+three variants are load-bearing:
+
+| | |
+| --- | --- |
+| `Detached` | show it and return. What the Windows trigger passes — it is on the one thread that sits in `GetMessage`, and a modal box shown there would stall every later arrival until somebody clicked it. |
+| `UntilDismissed` | show it and wait. What `--check` passes: a one-shot run would otherwise exit and take the box down with it. |
+| `Never` | say nothing. What the startup sweep passes — a drive left plugged in must not throw a box at every login. |
+
+The box is `MB_SETFOREGROUND | MB_SYSTEMMODAL` and has no owner window, so it cannot open
+behind a fullscreen game. Off Windows `alert::warn` is a no-op: there is no portable way to
+raise a dialog from a headless process, and the Linux trigger is fired by udev with no
+session to show one in. The log carries the same sentence either way.
+
 ### Settings
 
-There are none to edit. The debounce window (5 s, how long repeat arrivals for a drive letter
-already handled are ignored) is `DEBOUNCE_MILLISECONDS` in
+There are none to edit. The launch grace window (5 s, how long a launcher this listener
+spawned is assumed to still be starting) is `LAUNCH_GRACE_MILLISECONDS` in
 [`src/constants.rs`](src/constants.rs), with every other constant the crate owns; the log path
 is decided in [`src/log.rs`](src/log.rs). Both are compiled in. A `settings.rs` used to hold
 exactly these two, and it went the way of the config file for the same reason: a file that
@@ -315,7 +393,8 @@ write. A copy dropped by hand somewhere read-only falls back to
 place to look.
 
 Reading the log is the only way to see what the listener did — it has no console and no
-visible window. Every volume it looks at produces a line, including the ignored ones and why.
+visible window, only a tray icon whose menu opens this file. Every volume it looks at
+produces a line, including the ignored ones and why.
 
 ## Open questions
 
@@ -323,26 +402,23 @@ Three of these are now settled by the Windows build. The answers are recorded he
 than deleted, because the Linux trigger has to make the same calls and should make them the
 same way.
 
-- **Several volumes at once.** *Settled: handled independently, in bitmask order.* One event
-  carrying several letters runs the core once per letter, on the message thread, one after
-  another — so they are serialised in practice, but nothing coordinates them. Two trusted
-  cartridges plugged in together therefore each get a launcher *started*, which is the honest
-  reading of what the user asked for. What happens next is the launcher's business, not this
-  component's — and today the launcher does not do what this section used to claim. Its
-  single-instance mutex is the fixed, process-wide name `Local\Romzeta.CartridgeLauncher`
-  ([`../launcher/src/instance.rs`](../launcher/src/instance.rs)) with no cartridge identity in
-  it, taken in `main` before the window exists. The second launcher therefore acquires
-  nothing and returns silently: two cartridges plugged in together yield **one** gallery, and
-  the second cartridge gives no sign it was seen at all. That is a launcher-side defect, not
-  something to work around here.
-- **Re-arrival debounce.** *Settled: `constants::DEBOUNCE_MILLISECONDS`, 5000, keyed on drive
-  letter.*
-  Long enough to swallow the repeat events a flaky USB link produces, short enough that
-  deliberately re-plugging a cartridge still works. Keyed on the letter rather than on the
-  volume's contents, since deciding by contents means reading the volume before deciding to
-  skip it — most of the work the debounce exists to avoid. The consequence is that swapping a
-  *different* cartridge into the same letter within the window is also skipped; at five
-  seconds that is not a real sequence.
+- **Several volumes at once.** *Settled: the second one is refused here, not left to the
+  launcher.* One event carrying several letters still runs the core once per letter, on the
+  message thread, one after another. What changed is that the first success now stops the
+  rest: the letters after it find a launcher holding its mutex, or the grace window still
+  open, and are logged as ignored with that reason. This used to be left to the launcher —
+  whose single-instance mutex is the fixed, process-wide `Local\Romzeta.CartridgeLauncher`
+  ([`../launcher/src/instance.rs`](../launcher/src/instance.rs)) with no cartridge identity
+  in it — and the second launcher would acquire nothing and vanish silently, giving no sign
+  the second cartridge had been seen at all. Two cartridges still yield **one** gallery; the
+  difference is that the log now says which cartridge lost and why.
+- **Re-arrival debounce.** *Settled, and then replaced.* It was
+  `DEBOUNCE_MILLISECONDS`, keyed on drive letter — cheap, but it decided by *when* rather
+  than by what actually mattered. `LAUNCH_GRACE_MILLISECONDS` (5000) now covers only the gap
+  between spawning a launcher and that launcher taking its own mutex; past the window, the
+  mutex itself is the answer. The repeat events a flaky USB link produces still land inside
+  the window and are still swallowed, and unplugging the cartridge and plugging it back in
+  works the moment the gallery is gone — which the old letter-keyed window could refuse.
 - **Network and virtual volumes.** *Settled: filtered out explicitly, not left to the absent
   launcher.* On Windows that means `DRIVE_FIXED` / `DRIVE_REMOVABLE` only, plus dropping
   any arrival flagged `DBTF_NET`. The reason to be explicit is timing, not tidiness: reaching
@@ -373,8 +449,11 @@ same list in more detail.
       require it to declare the launcher role.
 - [x] Hold the verified file open against writers and deleters until it has been started.
 - [x] Take the launcher's version from the signed comment rather than running it.
+- [x] Refuse a launcher whose project major differs from this listener's, and say so.
+- [x] Refuse to start anything while a game holds the shared lease, clearing a stale one.
 - [x] Auto-launch it from the volume root.
-- [x] Log ignored volumes with the reason.
+- [x] Log ignored volumes with the reason, and explain the ones the user can act on in a
+      message box the caller decides the shape of (`Announce`).
 
 **Windows trigger** — resident, in [`src/trigger/windows.rs`](src/trigger/windows.rs):
 
@@ -382,8 +461,11 @@ same list in more detail.
 - [x] `WM_DEVICECHANGE` / `DBT_DEVICEARRIVAL`, decoding the `dbcv_unitmask` bitmask.
 - [x] Startup sweep for volumes already connected before login.
 - [x] Named-mutex single-instance guard.
-- [x] Drive-type and `DBTF_NET` filtering, arrival debounce, and `SEM_FAILCRITICALERRORS`
-      so an empty card reader can't pop a modal error box.
+- [x] Drive-type and `DBTF_NET` filtering, the launcher-already-open guard and its grace
+      window, and `SEM_FAILCRITICALERRORS` so an empty card reader can't pop a modal error
+      box.
+- [x] A tray icon with **Open log** and **Exit**, so the one process that runs from login to
+      logout can be looked at and stopped.
 - [x] End-to-end run against real removable hardware: a genuine arrival carried all the way
       through to a launch.
 
@@ -398,6 +480,8 @@ same list in more detail.
 **Both:**
 
 - [x] Behave correctly when started by hand, plus `--check <path>` to run the core against a
-      single volume and exit, and `--signature` to print what this build trusts. Registering
-      the Windows login entry and installing the Linux udev rule are the **installer's**
-      job — see [`../installer/structure.md`](../installer/structure.md).
+      single volume and exit, `--signature` to print what this build trusts, `--version`, and
+      `--help` — which a bare `--check` with no path falls to, because a mistyped invocation
+      is a mistake to report rather than silence to wait in. Registering the Windows login
+      entry and installing the Linux udev rule are the **installer's** job — see
+      [`../installer/structure.md`](../installer/structure.md).

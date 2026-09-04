@@ -13,6 +13,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use common::cartridge as contract;
 use common::version::Version;
 
 use crate::autoplay;
@@ -270,9 +271,9 @@ impl Edit {
     /// Opens `entry` for editing, or `None` if its catalog paths don't name a
     /// folder on this cartridge — the same containment check removal makes.
     pub fn start(ctx: &egui::Context, root: &Path, entry: &Entry) -> Option<Edit> {
-        let dir = catalog::gameDir(root, entry)?;
-        let slug = catalog::slugOf(entry)?;
-        let mut details = Details::new(ctx, &dir, Some(catalog::exeRelative(entry)?));
+        let dir = contract::gameDir(root, &entry.exe)?;
+        let slug = contract::slugOf(&entry.exe)?;
+        let mut details = Details::new(ctx, &dir, Some(contract::exeRelative(&entry.exe)?));
         details.name = entry.name.clone();
         details.steam = entry.steam;
         // Reads the steam_appid.txt already beside the exe, if there is one.
@@ -528,7 +529,7 @@ impl App {
         // merged. Renaming produces two entries the user can't tell apart;
         // overwriting destroys an install that may be many gigabytes and may be
         // the only copy. Refusing costs one click — remove the old one first.
-        let slug = catalog::slug(&detect::defaultName(&folder));
+        let slug = contract::slug(&detect::defaultName(&folder));
         if cartridge::takenSlugs(&self.keptEntries()).contains(&slug) {
             self.error = Some(format!(
                 "This cartridge already has a game in games/{slug}. \
@@ -619,7 +620,7 @@ impl App {
             .drafts
             .iter()
             .map(|draft| PlannedGame {
-                slug: catalog::uniqueSlug(&draft.details.name, &mut taken),
+                slug: contract::uniqueSlug(&draft.details.name, &mut taken),
                 source: draft.source.clone(),
                 name: draft.details.name.trim().to_string(),
                 exeRelative: draft
@@ -688,7 +689,7 @@ impl App {
                     )
                 });
                 let stale_cover = cover.as_ref().and_then(|(_, destination)| {
-                    catalog::imageFile(root, &edit.original).filter(|old| old != destination)
+                    contract::imageFile(root, &edit.original.image).filter(|old| old != destination)
                 });
 
                 let appid = edit.appidRewrite().map(|appid| {

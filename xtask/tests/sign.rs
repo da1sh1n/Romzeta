@@ -42,7 +42,7 @@ fn signs_and_verifies_a_binary() {
         sign(&exe, &pair.sk, "romzeta-launcher 0.2.0").expect("sign");
 
         let mut proved = checks();
-        let verified = verify(&exe, &trusted).unwrap_or_else(|e| panic!("{e}"));
+        let verified = verify(&exe, &trusted, "romzeta-launcher").unwrap_or_else(|e| panic!("{e}"));
         proved.expect(
             verified.anchor == "dev",
             "the dev key is the one that matched",
@@ -59,14 +59,17 @@ fn signs_and_verifies_a_binary() {
             fs::metadata(&exe).expect("stat").len() <= once + 8,
             "re-signing replaced the block instead of nesting one",
         );
-        proved.expect(verify(&exe, &trusted).is_ok(), "and it still verifies");
+        proved.expect(
+            verify(&exe, &trusted, "romzeta-launcher").is_ok(),
+            "and it still verifies",
+        );
 
         // One flipped byte in the payload, and it is no longer ours.
         let mut bytes = fs::read(&exe).expect("read");
         bytes[1] ^= 0xff;
         fs::write(&exe, &bytes).expect("write");
         proved.expect(
-            verify(&exe, &trusted).is_err(),
+            verify(&exe, &trusted, "romzeta-launcher").is_err(),
             "a flipped payload byte breaks it",
         );
         proved.verdict()
@@ -80,7 +83,7 @@ fn an_unsigned_binary_is_reported_as_such() {
         let exe = dir.join("bare.exe");
         fs::write(&exe, b"MZ and nothing else").expect("write");
 
-        let error = verify(&exe, &[]).expect_err("unsigned");
+        let error = verify(&exe, &[], "romzeta-launcher").expect_err("unsigned");
         verdict(
             if error.contains("no signature block") {
                 "no signature block"
@@ -103,7 +106,8 @@ fn a_signature_from_another_key_is_refused() {
         fs::write(&exe, b"MZ signed by someone else").expect("write");
         sign(&exe, &theirs.sk, "romzeta-launcher 0.2.0").expect("sign");
 
-        let error = verify(&exe, &anchors("romzeta", &ours)).expect_err("not our key");
+        let error =
+            verify(&exe, &anchors("romzeta", &ours), "romzeta-launcher").expect_err("not our key");
         verdict(
             if error.contains("not by any key this tree trusts") {
                 "not by any key this tree trusts"

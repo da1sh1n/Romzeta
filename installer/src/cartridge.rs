@@ -26,8 +26,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
+use common::cartridge as contract;
+
 use crate::catalog::{self, Entry};
-use crate::constants::{CONFIG_FILE, FREE_SPACE_SLACK, KEEPER_NAME, LAUNCHER_NAME};
+use crate::constants::FREE_SPACE_SLACK;
 use crate::copy;
 use crate::payload;
 use crate::steam;
@@ -166,7 +168,7 @@ pub fn apply(
     let total = plan.bytesToCopy().max(1);
     let mut done = 0u64;
 
-    for dir in [crate::constants::GAMES_DIR, crate::constants::IMAGES_DIR] {
+    for dir in [contract::GAMES_DIR, contract::IMAGES_DIR] {
         fs::create_dir_all(root.join(dir))
             .map_err(|e| format!("{}/ could not be created: {e}", dir))?;
     }
@@ -187,7 +189,7 @@ pub fn apply(
     let mut created: Vec<PathBuf> = Vec::new();
 
     for game in &plan.add {
-        let destination = root.join(crate::constants::GAMES_DIR).join(&game.slug);
+        let destination = root.join(contract::GAMES_DIR).join(&game.slug);
         created.push(destination.clone());
 
         let result = copy::directory(&game.source, &destination, cancel, &mut |file, bytes| {
@@ -282,7 +284,7 @@ pub fn apply(
     // config.toml is look and feel, and it belongs to whoever owns the
     // cartridge: seeded when absent, never overwritten. The same rule the
     // launcher applies to it on a real cartridge (../../launcher/src/content.rs).
-    let config = root.join(CONFIG_FILE);
+    let config = root.join(contract::CONFIG_FILE);
     if !config.exists()
         && let Err(e) = copy::bytes(&config, crate::constants::LAUNCHER_CONFIG)
     {
@@ -298,7 +300,7 @@ pub fn apply(
         Ok(bytes) => bytes,
         Err(problem) => return Err(unwind(&created, problem)),
     };
-    if let Err(e) = copy::bytes(&root.join(LAUNCHER_NAME), &launcher) {
+    if let Err(e) = copy::bytes(&root.join(contract::LAUNCHER_NAME), &launcher) {
         return Err(unwind(&created, e.message()));
     }
 
@@ -308,7 +310,7 @@ pub fn apply(
         Ok(bytes) => bytes,
         Err(problem) => return Err(unwind(&created, problem)),
     };
-    if let Err(e) = copy::bytes(&root.join(KEEPER_NAME), &keeper) {
+    if let Err(e) = copy::bytes(&root.join(contract::KEEPER_NAME), &keeper) {
         return Err(unwind(&created, e.message()));
     }
 
@@ -347,15 +349,15 @@ fn unwind(created: &[PathBuf], reason: String) -> String {
 
 /// Deletes one catalog entry's files. Paths that don't resolve to somewhere
 /// inside the cartridge are skipped rather than followed — see
-/// `catalog::gameDir`.
+/// `contract::gameDir`.
 fn removeEntry(root: &Path, entry: &Entry) -> Result<(), String> {
-    if let Some(dir) = catalog::gameDir(root, entry)
+    if let Some(dir) = contract::gameDir(root, &entry.exe)
         && dir.is_dir()
     {
         fs::remove_dir_all(&dir)
             .map_err(|e| format!("{} could not be removed: {e}", dir.display()))?;
     }
-    if let Some(cover) = catalog::imageFile(root, entry)
+    if let Some(cover) = contract::imageFile(root, &entry.image)
         && cover.is_file()
     {
         let _ = fs::remove_file(cover); // a leftover cover is harmless

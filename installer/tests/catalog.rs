@@ -15,8 +15,9 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
+use ::common::cartridge::{exeRelative, gameDir, imageFile, slug, slugOf};
 use common::{checks, runTest};
-use installer::catalog::{Entry, exeRelative, gameDir, imageFile, imagePath, slug, slugOf};
+use installer::catalog::{Entry, imagePath};
 
 /// An entry with everything filled in, for tests that vary one field.
 fn anEntry() -> Entry {
@@ -97,11 +98,12 @@ fn a_cover_written_by_an_older_installer_still_resolves() {
 
         let mut proved = checks();
         proved.expect(
-            imageFile(root, &legacy) == Some(root.join("images").join("bg3.png")),
+            imageFile(root, &legacy.image) == Some(root.join("images").join("bg3.png")),
             "an images/ cover still resolves",
         );
         proved.expect(
-            imageFile(root, &current) == Some(root.join("assets").join("images").join("bg3.png")),
+            imageFile(root, &current.image)
+                == Some(root.join("assets").join("images").join("bg3.png")),
             "and so does an assets/images/ one",
         );
         proved.verdict()
@@ -127,26 +129,22 @@ fn an_entry_says_which_folder_and_exe_are_its_own() {
 
         let mut proved = checks();
         proved.expect(
-            slugOf(&nested).as_deref() == Some("portal_2"),
+            slugOf(&nested.exe).as_deref() == Some("portal_2"),
             "the slug is the folder",
         );
         proved.expect(
-            exeRelative(&nested) == Some(PathBuf::from("bin/portal2.exe")),
+            exeRelative(&nested.exe) == Some(PathBuf::from("bin/portal2.exe")),
             "the exe is named relative to that folder",
         );
         proved.expect(
-            slugOf(&renamed).as_deref() == Some("portal_2"),
+            slugOf(&renamed.exe).as_deref() == Some("portal_2"),
             "renaming the game does not move its folder",
         );
         // Anything not under games/<slug>/<file> names no folder of its own,
         // which is the same refusal `gameDir` makes.
         for exe in ["games/loose.exe", "elsewhere/x/y.exe", "games/portal_2"] {
-            let odd = Entry {
-                exe: exe.into(),
-                ..nested.clone()
-            };
             proved.expect(
-                exeRelative(&odd).is_none(),
+                exeRelative(exe).is_none(),
                 &format!("{exe} names no folder of its own"),
             );
         }
@@ -202,23 +200,23 @@ fn removal_paths_stay_inside_the_cartridge() {
 
         let mut proved = checks();
         proved.expect(
-            gameDir(root, &escape).is_none(),
+            gameDir(root, &escape.exe).is_none(),
             "an escaping exe names no folder",
         );
         proved.expect(
-            imageFile(root, &escape).is_none(),
+            imageFile(root, &escape.image).is_none(),
             "nor does an escaping cover",
         );
         proved.expect(
-            gameDir(root, &ok) == Some(root.join("games").join("bg3")),
+            gameDir(root, &ok.exe) == Some(root.join("games").join("bg3")),
             "an ordinary entry names its own folder",
         );
         proved.expect(
-            imageFile(root, &ok) == Some(root.join("images").join("bg3.png")),
+            imageFile(root, &ok.image) == Some(root.join("images").join("bg3.png")),
             "and its own cover",
         );
         proved.expect(
-            gameDir(root, &shallow).is_none(),
+            gameDir(root, &shallow.exe).is_none(),
             "an exe loose in games/ names no folder",
         );
         proved.verdict()

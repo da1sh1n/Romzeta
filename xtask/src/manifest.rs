@@ -4,13 +4,15 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Reads the workspace and member manifests, and checks every crate's major
-//! against `project_version`.
+//! Reads the workspace and member manifests, and checks each shipped crate's
+//! major against `project_version`.
 
 // ########## THE VERSION CONTRACT ##########
 
 use std::fs;
 use std::path::Path;
+
+use crate::constants::SHIPPED_CRATES;
 
 /// One workspace member's name and version, as its own manifest states them.
 pub struct Crate {
@@ -80,8 +82,10 @@ pub fn read(root: &Path) -> Result<(u64, Vec<Crate>), String> {
     Ok((project_version as u64, crates))
 }
 
-/// Fails when any crate's major differs from the declared project version,
-/// returning that version when they all agree.
+/// Fails when a shipped crate's major differs from the declared project
+/// version — `SHIPPED_CRATES` only; a helper crate like `testkit` never ships
+/// and is not held to it. Returns the project version when everything shipped
+/// agrees with it.
 ///
 /// Reports *every* mismatch rather than the first, because the fix is usually
 /// "these three are behind" and finding that out one rebuild at a time wastes
@@ -89,16 +93,23 @@ pub fn read(root: &Path) -> Result<(u64, Vec<Crate>), String> {
 pub fn check(root: &Path) -> Result<u64, String> {
     let (project_version, crates) = read(root)?;
 
-    let drifted: Vec<_> = crates
+    let mut drifted = Vec::new();
+    for c in crates
         .iter()
-        .filter(|c| major(&c.version) != Some(project_version))
-        .map(|c| {
-            format!(
+        .filter(|c| SHIPPED_CRATES.contains(&c.name.as_str()))
+    {
+        match common::version::parse(&c.version) {
+            Some(v) if v.major == project_version => {}
+            Some(_) => drifted.push(format!(
                 "  {} is {} — expected {project_version}.y.z",
                 c.name, c.version
-            )
-        })
-        .collect();
+            )),
+            None => drifted.push(format!(
+                "  {} has a version xtask cannot parse: {:?}",
+                c.name, c.version
+            )),
+        }
+    }
 
     if !drifted.is_empty() {
         return Err(format!(
@@ -109,11 +120,6 @@ pub fn check(root: &Path) -> Result<u64, String> {
         ));
     }
     Ok(project_version)
-}
-
-/// The `x` of an `x.y.z`, or `None` if the leading part is not a number.
-pub fn major(version: &str) -> Option<u64> {
-    version.trim().split('.').next()?.parse().ok()
 }
 
 /// Reads a manifest, turning an IO error into a message naming the file.

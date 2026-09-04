@@ -14,17 +14,18 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 
+use common::cartridge as contract;
 use rust_embed::RustEmbed;
 use wry::http::{Request, Response, header::CONTENT_TYPE};
 
 use crate::constants::UI_ASSET_EXTENSIONS;
 
 /// The UI assets, baked into the exe at compile time and served over the
-/// `app://` protocol at runtime. They live in `src/` beside the Rust source,
-/// so the include list keeps the Rust files and the seed files (config.toml,
-/// catalog.json) out of the bundle — `isUiAsset` mirrors it at runtime.
+/// `app://` protocol at runtime. They live in `src/ui/`, apart from the Rust
+/// sources and the seed files; the include list is what still holds if a
+/// non-web file lands there — `isUiAsset` mirrors it at runtime.
 #[derive(RustEmbed)]
-#[folder = "src/"]
+#[folder = "src/ui/"]
 #[include = "*.html"]
 #[include = "*.css"]
 #[include = "*.js"]
@@ -67,7 +68,10 @@ pub fn handleRequest(base_dir: &Path, request: Request<Vec<u8>>) -> Response<Cow
     // installer keeps working. Which one a given cartridge uses is not decided
     // here at all — the path comes out of its own catalog.json, and this only
     // says which prefixes are allowed to name content rather than UI.
-    if path.starts_with("assets/") || path.starts_with("images/") || path.starts_with("games/") {
+    if path.starts_with("assets/")
+        || startsWithDir(path, contract::LEGACY_IMAGES_DIR)
+        || startsWithDir(path, contract::GAMES_DIR)
+    {
         return match fs::read(base_dir.join(path)) {
             Ok(bytes) => {
                 let mime = mimeTypeFor(Path::new(path), &bytes);
@@ -78,18 +82,20 @@ pub fn handleRequest(base_dir: &Path, request: Request<Vec<u8>>) -> Response<Cow
     }
 
     // Everything else is a UI asset, and only the web files count as one:
-    // `src/` also holds the Rust sources and the config.toml / catalog.json
-    // seeds, and neither the live path below nor rust-embed should ever hand
-    // those out.
+    // `src/ui/` is meant to hold nothing else, and neither the live path below
+    // nor rust-embed should hand out anything that turns up there anyway.
     if !isUiAsset(path) {
         return notFound();
     }
 
-    // Prefer the live file from the source `src/` folder when it exists —
+    // Prefer the live file from the source `src/ui/` folder when it exists —
     // under `cargo run` that's the repo, so edits show up on the next launch
     // with no rebuild. When it's absent (the deployed cartridge has no source
     // tree), fall back to the copy baked into the exe by rust-embed.
-    let source_ui = Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(path);
+    let source_ui = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("ui")
+        .join(path);
     if let Ok(bytes) = fs::read(&source_ui) {
         let mime = mimeTypeFor(Path::new(path), &bytes);
         return okResponse(mime, Cow::Owned(bytes));
@@ -103,6 +109,14 @@ pub fn handleRequest(base_dir: &Path, request: Request<Vec<u8>>) -> Response<Cow
         }
         None => notFound(),
     }
+}
+
+/// Whether `path` names something under top-level folder `dir` — `dir` itself
+/// followed by `/`, not merely a longer name sharing its prefix (`games/` vs.
+/// `games2/`).
+fn startsWithDir(path: &str, dir: &str) -> bool {
+    path.strip_prefix(dir)
+        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 fn okResponse(mime: &'static str, body: Cow<'static, [u8]>) -> Response<Cow<'static, [u8]>> {

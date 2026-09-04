@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use trust::Anchor;
 
-use crate::constants::LAUNCHER_NAME;
+use common::cartridge::LAUNCHER_NAME;
 
 // `ANCHORS: &[Anchor]`, written by build.rs from keys/*.pub and pasted in here at compile time.
 // Compiled in rather than read from disk: an anchor sitting in a writable file beside the exe

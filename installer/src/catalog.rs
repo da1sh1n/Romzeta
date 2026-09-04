@@ -4,36 +4,21 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-//! Writes and reads `catalog.json`, and derives the slugs and paths its entries
-//! hold. Paths are relative to the cartridge root with `/` as the separator.
+//! Writes and reads `catalog.json`. The slugs and cartridge paths its entries
+//! hold are `common::cartridge`'s job; this file builds catalog strings out of
+//! them.
 
 // ########## CATALOG.JSON ##########
 
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 
-use serde::{Deserialize, Serialize};
+use common::cartridge as contract;
 
-use crate::constants::{CATALOG_FILE, GAMES_DIR, IMAGES_DIR};
-
-/// One row of the catalog. Field names and types match the launcher's `Game`
-/// exactly; it is a hard error there if they don't.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct Entry {
-    pub name: String,
-    pub exe: String,
-    pub image: String,
-    /// Whether the launcher should bring the Steam client up before starting
-    /// this game. Skipped when false so a cartridge full of DRM-free games gains
-    /// no key it never needed, and so re-writing an old catalog leaves it alone.
-    #[serde(default, skip_serializing_if = "isFalse")]
-    pub steam: bool,
-}
-
-/// `skip_serializing_if` wants `fn(&T) -> bool`, which `Not::not` is not.
-fn isFalse(value: &bool) -> bool {
-    !*value
-}
+/// Field names and types match the launcher's `Game` exactly; it is a hard
+/// error there if they don't. Re-exported so `installer::catalog::Entry` keeps
+/// resolving for callers outside this block's remit.
+pub use contract::Entry;
 
 /// Reads an existing cartridge's catalog.
 ///
@@ -42,7 +27,7 @@ fn isFalse(value: &bool) -> bool {
 /// first game rather than refusing to open. A file that is *there* but unparsable
 /// does fail, because overwriting it would throw away a list we couldn't read.
 pub fn read(root: &Path) -> Result<Vec<Entry>, String> {
-    let path = root.join(CATALOG_FILE);
+    let path = root.join(contract::CATALOG_FILE);
     let json = match fs::read_to_string(&path) {
         Ok(json) => json,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -59,12 +44,16 @@ pub fn read(root: &Path) -> Result<Vec<Entry>, String> {
 /// hand on a cartridge that is already made.
 pub fn write(root: &Path, entries: &[Entry]) -> std::io::Result<()> {
     let json = serde_json::to_string_pretty(entries).expect("catalog entries always serialize");
-    fs::write(root.join(CATALOG_FILE), json + "\n")
+    fs::write(root.join(contract::CATALOG_FILE), json + "\n")
 }
 
 /// `games/<slug>/<exe>` for the catalog's `exe` field.
 pub fn exePath(slug: &str, exeRelative: &Path) -> String {
-    format!("{GAMES_DIR}/{slug}/{}", toRelativeString(exeRelative))
+    format!(
+        "{}/{slug}/{}",
+        contract::GAMES_DIR,
+        toRelativeString(exeRelative)
+    )
 }
 
 /// `images/<slug>.<ext>` for the catalog's `image` field.
@@ -78,7 +67,7 @@ pub fn imagePath(slug: &str, source: &Path) -> String {
         .extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_else(|| "png".into());
-    format!("{IMAGES_DIR}/{slug}.{ext}")
+    format!("{}/{slug}.{ext}", contract::IMAGES_DIR)
 }
 
 /// A path relative to something, as the catalog spells it: `/` separators, no
@@ -91,106 +80,4 @@ pub fn toRelativeString(path: &Path) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
-}
-
-/// A folder- and URL-safe name derived from the game's, used for both
-/// `games/<slug>/` and `images/<slug>.png`.
-///
-/// The alternative — keeping the source folder's name — puts whatever the user's
-/// disk happened to hold (spaces, `™`, a trailing dot) into a path that has to
-/// survive a JSON file, a `file://`-ish webview fetch and a FAT32 volume. This
-/// is the one place worth normalising.
-pub fn slug(name: &str) -> String {
-    let mut slug = String::new();
-    for c in name.chars() {
-        if c.is_ascii_alphanumeric() {
-            slug.push(c.to_ascii_lowercase());
-        } else if !slug.ends_with('_') {
-            slug.push('_');
-        }
-    }
-    let slug = slug.trim_matches('_').to_string();
-    if slug.is_empty() { "game".into() } else { slug }
-}
-
-/// `slug`, with a numeric suffix if that name is already taken on the cartridge.
-///
-/// Only ever reached for two *differently named* games that squash to the same
-/// slug (`Game: II` and `Game II`). Two adds of the same folder are refused up
-/// in the games screen, where the user can still do something about it — see
-/// `../structure.md`, "Adding the same game twice".
-pub fn uniqueSlug(name: &str, taken: &mut std::collections::HashSet<String>) -> String {
-    let base = slug(name);
-    let mut candidate = base.clone();
-    let mut n = 2;
-    while !taken.insert(candidate.clone()) {
-        candidate = format!("{base}_{n}");
-        n += 1;
-    }
-    candidate
-}
-
-/// The folder on the cartridge holding one entry's game files, or `None` if the
-/// entry's `exe` doesn't name one inside `games/`.
-///
-/// Used by remove, which deletes that folder — so a path escaping the cartridge
-/// (`../../Windows`) must resolve to nothing rather than to a directory tree.
-pub fn gameDir(root: &Path, entry: &Entry) -> Option<PathBuf> {
-    let mut parts = Vec::new();
-    for component in Path::new(&entry.exe).components() {
-        match component {
-            Component::Normal(part) => parts.push(part.to_os_string()),
-            Component::CurDir => {}
-            _ => return None,
-        }
-    }
-    // games/<slug>/… — anything shallower names no folder of its own.
-    if parts.len() < 3 || parts[0] != GAMES_DIR {
-        return None;
-    }
-    Some(root.join(&parts[0]).join(&parts[1]))
-}
-
-/// The `<slug>` an entry's files live under, from the `exe` path that names it.
-///
-/// Derived rather than re-slugged from the name, because the two part company
-/// the moment a game is renamed: the folder is fixed at add time and nothing
-/// afterwards reads the name to find it.
-pub fn slugOf(entry: &Entry) -> Option<String> {
-    let mut parts = Path::new(&entry.exe).components().filter_map(|c| match c {
-        Component::Normal(part) => Some(part.to_string_lossy().to_string()),
-        _ => None,
-    });
-    (parts.next()? == GAMES_DIR).then(|| parts.next())?
-}
-
-/// An entry's executable, relative to its own folder — `bin/game.exe` out of
-/// `games/<slug>/bin/game.exe`. The form the picker and the scan both speak.
-pub fn exeRelative(entry: &Entry) -> Option<PathBuf> {
-    let mut parts = Path::new(&entry.exe).components().filter_map(|c| match c {
-        Component::Normal(part) => Some(part.to_os_string()),
-        _ => None,
-    });
-    // Past `games` and past `<slug>`; whatever is left is the path inside.
-    (parts.next()? == GAMES_DIR).then_some(())?;
-    parts.next()?;
-    let relative: PathBuf = parts.collect();
-    (!relative.as_os_str().is_empty()).then_some(relative)
-}
-
-/// The cover file on the cartridge for one entry, with the same escape check.
-pub fn imageFile(root: &Path, entry: &Entry) -> Option<PathBuf> {
-    let mut resolved = root.to_path_buf();
-    let mut parts = 0;
-    for component in Path::new(&entry.image).components() {
-        match component {
-            Component::Normal(part) => {
-                resolved.push(part);
-                parts += 1;
-            }
-            Component::CurDir => {}
-            _ => return None,
-        }
-    }
-    (parts > 0).then_some(resolved)
 }

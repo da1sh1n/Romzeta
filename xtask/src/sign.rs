@@ -14,6 +14,23 @@ use std::path::Path;
 
 use crate::keys::Anchor;
 
+// ========== Deriving A Role ==========
+
+/// The role `xtask` expects a file's signature to declare, from its stem.
+/// Shared by `sign` and `verify` — and by `release`, which signs and then
+/// verifies the same four files — so none of them can disagree about what a
+/// file is supposed to be.
+pub fn roleForPath(path: &Path) -> Result<&'static str, String> {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    trust::constants::roleForStem(stem).ok_or_else(|| {
+        format!(
+            "{} has no role xtask recognises — expected one of: launcher, listener, \
+             installer, keeper",
+            path.display()
+        )
+    })
+}
+
 // ========== Signing ==========
 
 /// Signs the file at `path` in place with `key`, writing `comment` and today's
@@ -52,9 +69,12 @@ pub struct Verified {
     pub comment: String,
 }
 
-/// Verifies the file at `path` against `anchors`, the way the listener will.
-/// Returns which anchor accepted it, or a sentence explaining the refusal.
-pub fn verify(path: &Path, anchors: &[Anchor]) -> Result<Verified, String> {
+/// Verifies the file at `path` against `anchors`, and requires its trusted
+/// comment to declare `expected_role` — the same two questions the listener
+/// asks, in the same order, so `xtask verify` reaches the same verdict it
+/// would. Returns which anchor accepted it, or a sentence explaining the
+/// refusal.
+pub fn verify(path: &Path, anchors: &[Anchor], expected_role: &str) -> Result<Verified, String> {
     let bytes = fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
     let (payload, signature) = sigblock::split(&bytes);
 
@@ -85,9 +105,18 @@ pub fn verify(path: &Path, anchors: &[Anchor]) -> Result<Verified, String> {
         // `false` refuses minisign's pre-1.0 signature format, matching the
         // listener exactly — this check has to reach the same conclusion it will.
         if key.verify(payload, &signature, false).is_ok() {
+            let comment = signature.trusted_comment().to_string();
+            // Only past the verify, never before — same rule as `trust::attest`.
+            let (role, _) = trust::comment::split(&comment);
+            if role != expected_role {
+                return Err(format!(
+                    "{} is a signed {role}, but a {expected_role} was expected",
+                    path.display()
+                ));
+            }
             return Ok(Verified {
                 anchor: anchor.name.to_string(),
-                comment: signature.trusted_comment().to_string(),
+                comment,
             });
         }
     }

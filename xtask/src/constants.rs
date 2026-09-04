@@ -32,6 +32,14 @@ pub const TEST_LOGS: &str = "logs";
 /// The column `xtask test` adds when it merges those tables into one.
 pub const CATEGORY_COLUMN: &str = "Category";
 
+// ========== The Version Contract (manifest.rs, release.rs) ==========
+
+/// The crates that ship to a user and are held to `project_version`'s major.
+/// Everything else in the workspace is still read for its name and version,
+/// but a helper crate like `testkit` never ships and would need bumping for no
+/// reason if it were held to the same contract.
+pub const SHIPPED_CRATES: &[&str] = &["launcher", "listener", "keeper", "installer"];
+
 // ========== Signing Keys (keys.rs) ==========
 
 /// Overrides the secret key location. Holds a path, not a key.

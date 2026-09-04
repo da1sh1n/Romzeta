@@ -15,7 +15,9 @@ use std::process::{Child, Command};
 use std::thread;
 use std::time::Instant;
 
-use crate::catalog::{self, Game};
+use common::cartridge as contract;
+
+use crate::catalog::Game;
 use crate::constants::*;
 use crate::log;
 use crate::steam;
@@ -34,7 +36,7 @@ pub enum Outcome {
 /// Call on a worker thread. All three stages block: a game flagged `steam` waits
 /// up to [`STEAM_WAIT`] for the client, and `supervise` waits up to
 /// [`WINDOW_WAIT_MS`] for a window.
-pub fn run(base: &Path, game: &Game, index: usize, show_console_window: bool) -> Outcome {
+pub fn run(base: &Path, game: &Game, show_console_window: bool) -> Outcome {
     // Before the spawn, not after: the game's DRM asks for the client during its
     // own startup, so a client that arrives late is a client that arrived too
     // late.
@@ -43,7 +45,7 @@ pub fn run(base: &Path, game: &Game, index: usize, show_console_window: bool) ->
     {
         return Outcome::Failed(message);
     }
-    match spawn(base, game, index, show_console_window) {
+    match spawn(base, game, show_console_window) {
         Ok(child) => supervise(base, game, child),
         Err(message) => Outcome::Failed(message),
     }
@@ -56,17 +58,12 @@ pub fn run(base: &Path, game: &Game, index: usize, show_console_window: bool) ->
 /// The working directory is the exe's **own folder**, not the cartridge root:
 /// games overwhelmingly resolve assets relative to themselves, and one started
 /// from the wrong cwd fails in ways that look like corruption.
-fn spawn(
-    base: &Path,
-    game: &Game,
-    index: usize,
-    show_console_window: bool,
-) -> Result<Child, String> {
+fn spawn(base: &Path, game: &Game, show_console_window: bool) -> Result<Child, String> {
     // Re-checked rather than trusted from the catalog load: `game` reaches here
     // by index over IPC (see `crate::ui`), and re-deriving the containment
     // check at the one place that actually spawns something is cheaper than a
     // second path from an untrusted `catalog.json` entry to a running process.
-    if !catalog::isContained(&game.exe) {
+    if !contract::isContained(&game.exe) {
         common::log::appendLine(
             &base.join(LOG_FILE),
             &format!("REFUSED {}: exe path escapes the cartridge", game.name),
@@ -93,7 +90,7 @@ fn spawn(
     // The exe's parent always exists here (base.join of a relative path), but
     // fall back to the cartridge root rather than refusing to launch.
     let workdir = exe.parent().unwrap_or(base).to_path_buf();
-    let (stdout, stderr) = log::gameOutput(base, game, index);
+    let (stdout, stderr) = log::gameOutput(base, game);
 
     let mut command = Command::new(&exe);
     command.current_dir(&workdir).stdout(stdout).stderr(stderr);

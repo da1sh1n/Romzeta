@@ -24,20 +24,21 @@ trust = { path = "../trust" }
 # nothing is read from disk but the launcher itself — so on a non-Windows build
 # the crates above are the entire dependency tree.
 
+# Reading keys/*.pub and generating the ANCHORS constant, shared with the
+# installer's build.rs so both read the same files the same way.
+[build-dependencies]
+trust = { path = "../trust" }
+
 # Windows-only: the resident trigger is entirely Win32. Nothing here is pulled
 # in on a Linux build.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
-    # WNDCLASSW carries an HBRUSH, so the struct itself is gated on Gdi even
-    # though this window never paints.
-    "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Storage_FileSystem",              # GetLogicalDrives / GetDriveTypeW
     "Win32_System_Console",                  # AttachConsole, so --version prints
     "Win32_System_Diagnostics_Debug",        # SetErrorMode
-    "Win32_System_LibraryLoader",            # GetModuleHandleW
-    "Win32_System_Threading",                # CreateMutexW
+    "Win32_System_Threading",                # OpenMutexW
     "Win32_System_WindowsProgramming",       # DRIVE_* constants
     "Win32_UI_WindowsAndMessaging",          # the message loop, and MessageBoxW
     "Win32_UI_Shell",                        # Shell_NotifyIconW, the tray icon

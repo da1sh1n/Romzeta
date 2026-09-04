@@ -11,38 +11,51 @@
 // ########## THE GAME LIST ##########
 
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 
-use serde::Deserialize;
+use common::cartridge as contract;
 
 use crate::constants::LOG_FILE;
 
-#[derive(Deserialize, Clone)]
-pub struct Game {
-    pub name: String,
-    pub exe: String,
-    pub image: String,
-    /// Whether this game's DRM needs the Steam client up before it will run.
-    /// Absent on every cartridge written before the installer offered the
-    /// checkbox, which is what `default` is here for.
-    #[serde(default)]
-    pub steam: bool,
-}
+/// The launcher's name for a catalog entry. An alias rather than a fresh type:
+/// the fields are the shared contract's own (`name`, `exe`, `image`, `steam`),
+/// and `game.name` / `game.exe` read the same either way.
+pub type Game = contract::Entry;
 
 /// Reads `catalog.json` from the content folder (already seeded by
 /// `content::ensureLayout`), dropping any entry whose `exe` or `image` does
 /// not stay inside it.
+///
+/// A file that cannot be read or parsed gives an empty shelf and a logged
+/// reason, never a dead process: the README tells people to hand-edit this
+/// file, and a stray comma must cost the covers, not the window.
 pub fn load(base_dir: &Path) -> Vec<Game> {
-    let path = base_dir.join("catalog.json");
-    let json = fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-    let games: Vec<Game> = serde_json::from_str(&json)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", path.display()));
+    let path = base_dir.join(contract::CATALOG_FILE);
+    let json = match fs::read_to_string(&path) {
+        Ok(json) => json,
+        Err(error) => {
+            common::log::appendLine(
+                &base_dir.join(LOG_FILE),
+                &format!("UNREADABLE {}: {error}", path.display()),
+            );
+            return Vec::new();
+        }
+    };
+    let games: Vec<Game> = match serde_json::from_str(&json) {
+        Ok(games) => games,
+        Err(error) => {
+            common::log::appendLine(
+                &base_dir.join(LOG_FILE),
+                &format!("UNPARSABLE {}: {error}", path.display()),
+            );
+            return Vec::new();
+        }
+    };
 
     games
         .into_iter()
         .filter(|game| {
-            let contained = isContained(&game.exe) && isContained(&game.image);
+            let contained = contract::isContained(&game.exe) && contract::isContained(&game.image);
             if !contained {
                 common::log::appendLine(
                     &base_dir.join(LOG_FILE),
@@ -58,19 +71,6 @@ pub fn load(base_dir: &Path) -> Vec<Game> {
         .collect()
 }
 
-/// Whether joining `relative` onto the cartridge root can only ever land
-/// somewhere inside it. Everything that is not a plain component — a drive
-/// prefix, a UNC root, a leading `/`, a `..` — is refused.
-///
-/// `..` is refused outright rather than resolved and range-checked, because a
-/// symlink inside `games/` could make an in-range path resolve somewhere it
-/// does not point at all.
-pub fn isContained(relative: &str) -> bool {
-    Path::new(relative)
-        .components()
-        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
-}
-
 /// The game list as handed to the page.
 ///
 /// Rebuilt rather than passed through as the raw catalog text so each entry can
@@ -78,20 +78,6 @@ pub fn isContained(relative: &str) -> bool {
 /// once, at startup — a game whose files never shipped is a state of the
 /// cartridge, not of a launch, and the page marks those covers as unplayable
 /// instead of letting the player click into a guaranteed failure.
-/// `games/<slug>` under `base_dir` for one entry — the folder holding its
-/// files. Derived from `exe` rather than stored anywhere, matching the
-/// installer's own `catalog::gameDir`, so a rename never moves it. `None` for
-/// a hand-edited or pre-`games/` catalog entry that isn't shaped this way.
-pub fn gameDir(base_dir: &Path, game: &Game) -> Option<PathBuf> {
-    let mut parts = Path::new(&game.exe).components().filter_map(|c| match c {
-        Component::Normal(part) => Some(part),
-        _ => None,
-    });
-    (parts.next()? == "games").then_some(())?;
-    let slug = parts.next()?;
-    Some(base_dir.join("games").join(slug))
-}
-
 pub fn payload(base_dir: &Path, games: &[Game]) -> serde_json::Value {
     serde_json::Value::Array(
         games

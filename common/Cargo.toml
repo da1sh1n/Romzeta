@@ -12,22 +12,44 @@ license = "GPL-3.0-or-later"
 # its own, so this crate stays as cheap to link as the things it serves.
 sigblock = { path = "../sigblock" }
 
-# src/reg.rs only. Same crate and version the three binaries already link, so
-# this adds an edge to the graph rather than a dependency to the tree.
+# Off unless `catalog` is on. Same version the two crates that will enable it
+# already link.
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+
+# `cartridge::Entry` is the only thing here that needs serde, and only the
+# launcher and the installer ever read catalog.json. Off by default is what
+# keeps the listener and the keeper from linking serde at all.
+[features]
+catalog = ["dep:serde"]
+
+# src/reg.rs and src/win32.rs. Same crate and version the three binaries
+# already link, so this adds an edge to the graph rather than a dependency to
+# the tree.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
     # Not elevation: `RegCreateKeyExW` takes a `*const SECURITY_ATTRIBUTES` (we
     # pass null), and windows-sys gates the whole binding on this feature.
     "Win32_Security",
+    # WNDCLASSW carries an HBRUSH, so the struct is gated on Gdi even though
+    # this window never paints.
+    "Win32_Graphics_Gdi",
+    # GetModuleHandleW, to hand the running exe's instance to RegisterClassW
+    # and LoadIconW.
+    "Win32_System_LibraryLoader",
     "Win32_System_Registry",
     "Win32_System_Threading",
-    # SetCurrentProcessExplicitAppUserModelID, for src/aumid.rs.
+    # Shell_NotifyIconW (tray icon), SetCurrentProcessExplicitAppUserModelID.
     "Win32_UI_Shell",
+    # Window creation, message loop, tray menu.
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
-# The test harness every crate's tests/ folder runs on. Dev-only, and the
-# reason this edge is allowed to point back at common: cargo excludes
-# dev-dependencies from the cycle it would otherwise refuse.
+# The test harness every crate's tests/ folder runs on, plus the crate that
+# writes catalog.json, so tests/catalog.rs pins the real writer rather than a
+# copy of it. Dev-only, and the reason these edges are allowed to point back at
+# common: cargo excludes dev-dependencies from the cycle it would otherwise
+# refuse. Only one of the two catalog crates can be here — see tests/catalog.rs.
 [dev-dependencies]
 testkit = { path = "../testkit" }
+installer = { path = "../installer" }

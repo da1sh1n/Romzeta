@@ -29,8 +29,10 @@ catalog.json     <- the game list (name / exe / image); seeded likewise
 assets/
   images/        <- cover art (600x900, 2:3), dropped in by hand
   EBWebView/     <- WebView2's own data folder (its only on-disk crumbs)
-games/           <- the actual game installs
-logs/            <- launcher.log (every launch attempt) + <game>/out.log, err.log
+games/           <- the actual game installs, plus <game>/counter.txt, the playtime
+                    counter the keeper ticks
+logs/            <- launcher.log (every launch attempt), keeper.log, and
+                    <game>/out.log, err.log
 ```
 
 Nothing else. `keeper.exe` is written by the installer from the same payload and travels with
@@ -65,8 +67,11 @@ data files baked into the exe:
 ```text
 launcher/
   Cargo.toml
+  build.rs         <- embeds the version info Task Manager shows
   src/
-    main.rs        <- the front door: resolve the base dir, take the lock, hand off to ui
+    main.rs        <- the front door: answer --version, resolve the base dir, take the
+                      lock, hand off to ui
+    lib.rs         <- the module list; a library so tests/ can reach inside
     constants.rs   <- every tunable number in the crate, in one place
     content.rs     <- which folder holds the content, and seeding it on first run
     config.rs      <- reading config.toml, key by key, with defaults under it
@@ -80,16 +85,14 @@ launcher/
     instance.rs    <- the single-instance mutex
     keeper.rs      <- spawning keeper.exe once a game is up, then letting go of it
     steam.rs       <- bringing the Steam client up for games whose DRM needs it
-    version.rs     <- --version and --signature, answered before anything touches disk
-    tray/          <- the tray icon; cfg-gated, like the listener's trigger
-      mod.rs       <- cfg selects the one below, or a no-op everywhere else
-      windows.rs   <- Shell_NotifyIconW, the menu, and the restore message
-    tests.rs       <- the crate's own tests
-    index.html     <- the UI's markup, embedded by rust-embed and served over app://
-    style.css      <- its look, same
-    app.js         <- its behaviour: an ES module that imports the nine below
-    cards.js dom.js layout.js row.js arrange.js
-    launch.js theme.js cursor.js backdrop.js
+    tray.rs        <- the tray icon the launcher hides behind while a game runs
+    ui/            <- the web half, and nothing else: this whole folder is what
+                      rust-embed bakes in and what app:// serves
+      index.html   <- the UI's markup
+      style.css    <- its look
+      app.js       <- its behaviour: an ES module that imports the nine below
+      cards.js dom.js layout.js row.js arrange.js
+      launch.js theme.js cursor.js backdrop.js
                    <- one concern each; only app.js is named by index.html
     config.toml    <- seed config, embedded via include_str! and written beside the exe
     catalog.json   <- seed game list, same
@@ -98,8 +101,15 @@ launcher/
       DepartureMono.woff2 <- the typeface, embedded too, served at app://fonts/…
   licenses/
     OFL-DepartureMono.txt <- required by the SIL Open Font License the face ships under
+  tests/           <- the crate's tests, run through the workspace's testkit crate
   structure.md
 ```
+
+There is no `version.rs` any more. `--version` and `--signature` are answered by
+`common::version::handled` in the first lines of `main.rs`, before the base dir is resolved
+and before anything is seeded — the listener reads a launcher's version out of its
+*signature*, and a launcher that wrote to the cartridge on its way to answering a question
+would be doing work nobody asked for. Only the owner of that rule moved; the rule is the same.
 
 The font is **compiled into the exe, not shipped on the cartridge**. A font beside the exe
 is a file that can be deleted, missed by a hand-copy, or left behind when somebody moves a
@@ -144,13 +154,15 @@ together: **every tunable number lives in `constants.rs`** (the module that owns
 is named in its section header), and the only file that knows both halves of the app is
 `ui.rs`, where config and catalog go out to the page and clicks come back.
 
-Because `src/` holds both source and web assets, `UiAssets`' rust-embed include list
-(`*.html`, `*.css`, `*.js`) is what keeps the Rust sources and the two seed files out of the
-bundle; `isUiAsset()` applies the same extension list at runtime so the dev path can't
-serve them either. That pair of lists is the one deliberate exception to the constants rule
-— `UI_ASSET_EXTENSIONS` stays beside the embed list it mirrors, because apart they drift.
-The font has a second embed struct of its own (`FontAssets`, over `assets/`), because
-rust-embed takes one folder each and the typeface does not belong beside the Rust sources.
+**The folder is the boundary.** `UiAssets` is `#[folder = "src/ui/"]`, so the Rust sources
+and the two seed files are outside the bundle by where they sit rather than by a rule that
+has to keep excluding them. The include list (`*.html`, `*.css`, `*.js`) is what still holds
+if a non-web file lands in that folder, and `isUiAsset()` applies the same extension list at
+runtime so the dev path can't serve more than the deployed one. That pair of lists is the
+one deliberate exception to the constants rule — `UI_ASSET_EXTENSIONS` stays beside the
+embed list it mirrors, because apart they drift. The font has a second embed struct of its
+own (`FontAssets`, over `assets/`), because rust-embed takes one folder each and the
+typeface does not belong beside the Rust sources either.
 
 **They fail differently, and only one of them fails where you'll see it.** The runtime
 list gates both paths, so a missing extension 404s in dev immediately. The rust-embed list
@@ -166,10 +178,10 @@ one list has to be tested on a built `launcher.exe`, not just in dev.
   origin would crash IPC.
 - **Content vs. UI.** `assets::handleRequest` serves `assets/…`, `images/…` (the older
   spelling, kept so existing cartridges keep working) and `games/…` from disk beside the
-  exe, and everything else as a UI asset (404 unless it passes `is_ui_asset`). The one
+  exe, and everything else as a UI asset (404 unless it passes `isUiAsset`). The one
   exception is `fonts/…`, answered from the embedded `FontAssets` before the disk is
-  consulted at all. In dev it prefers the **live** file from the source `src/` folder
-  (`CARGO_MANIFEST_DIR/src/…`) so HTML edits show up on the next launch with no
+  consulted at all. In dev it prefers the **live** file from the source folder
+  (`CARGO_MANIFEST_DIR/src/ui/…`) so HTML edits show up on the next launch with no
   rebuild, falling back to the embedded copy on a deployed cartridge. Responses send
   `Cache-Control: no-store` so WebView2 never serves stale HTML/art.
 - **Single instance.** A Windows **named mutex** (`Local\Romzeta.CartridgeLauncher`),
@@ -215,6 +227,38 @@ one list has to be tested on a built `launcher.exe`, not just in dev.
   which is a different way of embedding the browser entirely.
 - **GUI app**, `#![windows_subsystem = "windows"]` — no console window.
 
+## The tray
+
+**A launch no longer ends the launcher.** Once a game is confirmed up the window is hidden
+and a tray icon takes its place; the process stays alive holding its single-instance mutex,
+so coming back from a game and starting another one costs nothing and cannot race a second
+launcher into existence. Left-click the icon, or *Open Romzeta* on its right-click menu, to
+bring the window back; *Exit* closes for real. Windows-only — `tray.rs` is `#[cfg(windows)]`
+and there is no fallback.
+
+- **The icon lives on a second, never-shown window**, not the launcher's own. It is
+  top-level, so `Shell_NotifyIconW` can target it, and never passed to `ShowWindow`, so it
+  has no taskbar button. Created before `event_loop.run` on the same thread: a thread has one
+  Win32 message queue and `tao` pumps all of it rather than only its own window's, so this
+  window's `wndProc` is reached with no plumbing into `tao`'s event loop.
+- **Restoring goes back through `tao`'s proxy** as `UserEvent::TrayRestoreRequested`, never
+  a raw `ShowWindow` on the launcher's `HWND`. `tao::window::Window::set_visible` diffs
+  against a cached flag that a raw Win32 call would not update, and the breakage would show
+  up on the *next* hide rather than here.
+- **Rust arms its own deadline.** The page asks to hide when its outro finishes; the
+  `LAUNCH_HIDE_FALLBACK` timer (`constants.rs`, 1.2 s) hides regardless, so a broken page
+  cannot leave the launcher sitting in front of a running game. Whichever arrives first
+  disarms the other, so one launch never hides twice.
+- **The outro is torn down off screen.** `window.__launchReset()` runs after the window is
+  hidden — unwinding the transition while it is still visible reads as a glitch.
+- **Always-on-top is dropped before the window goes**, not after it comes back: a launch can
+  land inside the grace period `window::raise` opened, and a topmost window restored later
+  would return on top of the game.
+- Failing to create the tray window, or to add the icon, is **logged and stepped over**. The
+  game is already running, which is what the player asked for. The cost is a launcher that
+  is hidden with nothing left to bring it back — `set_visible(false)` takes the taskbar
+  button with it — so the line in `logs/launcher.log` is the only trace.
+
 ## The gallery
 
 One row of covers in a horizontal scroll viewport, with a toolbar across the top.
@@ -255,6 +299,24 @@ One row of covers in a horizontal scroll viewport, with a toolbar across the top
   once: which cover is lifted, which is clear of the veil, and which one the name line
   names. Deliberately not a separate hover state and focus state — those can disagree, and
   when they do the row lifts one cover while the name describes another.
+- **The covers you are not pointing at are held at `cover_opacity`**, the selected one at
+  full strength. It is the same one index doing the work — a fourth thing it decides, and
+  the reason the row reads as one shelf with one card picked up rather than a grid of
+  equals.
+- **The pointer is a ring drawn against the art under it.** The cursor is a system cursor,
+  not an element chasing the mouse, so it cannot blend with what it sits on. `cursor.js`
+  instead measures each cover once into a coarse 32×48 luma grid and swaps the ring for its
+  opposite where the pixels call for it, with two thresholds rather than one so art sitting
+  on the line doesn't flicker as the pointer moves. `cursor_color` names the ring outright
+  and switches all of that off.
+- **The background moves.** `background_effect` picks between `simple` (nothing moves),
+  `particles` (glowing hexagons spiralling outward) and `fog` (plumes drifting up);
+  `background_effect_color` tints it, blank meaning "take it from the palette". The name is
+  validated in Rust, so anything unrecognised has already become `simple` before `theme.js`
+  sees it. The glow is two full-window blur passes, which is free on a GPU and unusable in
+  software — this webview runs with `--disable-gpu` — so `backdrop.js` blurs **once** into a
+  sprite per tint and rotation and the per-frame loop is nothing but blits. Anyone
+  "simplifying" that back into a per-frame filter will find out why on the first cartridge.
 - **Arranging** is a toggle beside the order control, shown only in `user` mode. It puts a
   grip on each cover (drawn *on* the cover, not above it — the window height is already
   committed), makes a press mean "pick this up" rather than "start this", and writes the
@@ -280,25 +342,37 @@ happens while the page runs its outro, so nothing waits on it.
 
 ## Launching a game
 
-Clicking a cover posts `launch:<id>` over IPC. That is one of four messages the page can
+Clicking a cover posts `launch:<id>` over IPC. That is one of five messages the page can
 send, and the whole of what it is allowed to ask for — there is deliberately no general
 "set this setting" message:
 
 | message | meaning |
 | --- | --- |
-| `close` | the close button, and the page's own outro once a game is up |
+| `close` | the close button, or *Exit* on the tray menu |
+| `hide` | the page's outro finished over a game that came up |
 | `launch:<id>` | a cover was chosen |
 | `mode:<name>` | the order control changed |
 | `order:<a,b,c>` | covers were dragged into a new order |
+
+`close` and `hide` are two different endings and were once the same one: the launcher used
+to exit on a successful launch, so the page had only one thing to ask for. It hides now (see
+[The tray](#the-tray)), and closing is what the player asks for by hand.
 
 The last two are the only route by which the page reaches the disk, and both are checked
 in `ui.rs` rather than trusted: an unknown mode is refused and an id list is normalized
 before it is stored, so a bug in the page can't leave behind a config a later run has to
 make sense of. What
 follows is in `launch.rs`, and the guiding rule is that **"started" means the game's
-window is up** — the launcher closes itself on that signal, and closing while the game is
-still an invisible process makes a working launch look like a broken one.
+window is up** — the launcher gets out of the way on that signal, and going while the game
+is still an invisible process makes a working launch look like a broken one.
 
+0. **Steam, if the entry asks for it.** A game flagged `steam` gets the client brought up
+   silently first, and the launch blocks until Steam can actually answer a handshake —
+   `ActiveProcess` in the registry, polled every `STEAM_POLL` for up to `STEAM_WAIT`
+   (2 minutes). Before the spawn and not after: the DRM asks for the client during its own
+   startup, so a client that arrives late arrived too late. Steam already running is the
+   common case and costs one registry read. No Steam installed is a failure with its own
+   line under the cover, not a silent one.
 1. **Spawn.** `<game.exe>` beside `launcher.exe`, with the cwd set to **the exe's own folder** — games
    resolve their assets relative to themselves, and the wrong cwd fails in ways that look
    like corruption. stdout/stderr are redirected into `logs/<game>/`. Unless
@@ -315,8 +389,9 @@ still an invisible process makes a working launch look like a broken one.
    reads as "up". Dying inside the window is a failure, with its exit code in the log.
 3. **Report.** The outcome travels back to the event loop as `UserEvent::LaunchOutcome`
    and into the page as `window.__launchOutcome(index, ok, message)`. On success the page
-   plays its outro and asks to close; Rust also arms its own ~1.2 s deadline, so a broken
-   page can't leave the launcher sitting in front of a running game.
+   plays its outro and asks to hide; Rust also arms its own ~1.2 s deadline, so a broken
+   page can't leave the launcher sitting in front of a running game. See
+   [The tray](#the-tray) for where the window goes.
 4. **Hand the game to the keeper.** On success, and only with a real pid, `ui.rs` calls
    [`keeper::spawn`](src/keeper.rs), which starts `keeper.exe` — the sibling of whichever
    `launcher.exe` is running, on a cartridge or under `cargo run` alike — detached, with
@@ -366,29 +441,45 @@ What the player sees, all of it driven by the page:
 The launcher has no console, so `logs/` is the only place a failure can be explained:
 
 - `logs/launcher.log` — every attempt, pid, and the **full** OS error text (the UI only
-  ever shows one short sentence). Appended, rewritten from scratch past 1 MB.
+  ever shows one short sentence), plus anything the tray failed to do. Appended, rewritten
+  from scratch past 1 MB.
+- `logs/keeper.log` — the keeper's own line of the same story, written by the process the
+  launcher spawns and outlives it. Not this crate's file; see [`../keeper/`](../keeper/).
 - `logs/<game>/out.log`, `logs/<game>/err.log` — that game's own console output,
   truncated per launch so they always describe the current run. `<game>` is the catalog
   name reduced to `[a-z0-9-]`.
 
 ## Data files
 
-- **`catalog.json`** — an array of `{ name, exe, image }`. `exe` and `image` are paths
-  relative to `launcher.exe`'s own folder (e.g. `games/bg3/bg3.exe`, `assets/images/bg3.png`). Injected into the
+- **`catalog.json`** — an array of `{ name, exe, image, steam }`. `exe` and `image` are paths
+  relative to `launcher.exe`'s own folder (e.g. `games/bg3/bg3.exe`, `assets/images/bg3.png`);
+  `steam` is `#[serde(default)]`, so a cartridge written before the flag existed reads as
+  false rather than failing to parse. Injected into the
   page as `window.__GAMES__` (fetching it would hit CORS) — rebuilt rather than passed
   through verbatim, so each entry can carry `available` (see *Launching a game*).
-- **`config.toml`** — real TOML, parsed with the `toml` crate. `config::load()` reads it
+- **`config.toml`** — real TOML, parsed with the `toml` crate. Every key is declared once,
+  in `constants::SETTINGS`: its TOML name, the one-line description written above it in the
+  file, and a `config::Kind` saying how it is read (`Flag`, `Number`, `Unit` — clamped into
+  0..=1 rather than rejected, `Color`, `OneOf` a fixed set, `Ids`) carrying its default.
+  Reading, documenting an absent key and validating a bad one all walk that one table, so a
+  new setting is one entry rather than three edits that can disagree.
+
+  `config::load()` reads the file
   as a `toml::Table` and pulls one key at a time rather than deserializing into a
   struct, so unknown keys and wrong-typed values cost only that setting (it falls back
   to its default) and an older config still works; only a file that isn't valid TOML at
   all drops every setting to defaults. Knobs: `show_captions`, `show_console_window`
   (bool), `border_gap`, `image_gap`, `corner_radius`, `window_corner_radius`,
-  `shadow_size`, `shadow_fade`, `error_border_width`, `missing_dim`, `loading_text_gap`
-  (non-negative numbers), and `primary_color`, `secondary_color`, `accent_color`,
-  `overlay_color`, `loading_ring_color`, `loading_text_color`, `error_border_color`,
-  `error_text_color`, `missing_sign_color`, `toolbar_color`, `scrollbar_color` (quoted CSS
-  color strings). Every one of them but `show_console_window` is handed to the page as a
-  CSS variable; that one only ever matters to Rust, at the moment a game is spawned (see
+  `shadow_size`, `shadow_fade`, `error_border_width`, `missing_dim`, `cover_opacity`,
+  `loading_text_gap` (non-negative numbers, the two `*_dim`/`*_opacity` ones 0 to 1), and
+  `primary_color`, `secondary_color`, `accent_color`, `overlay_color`,
+  `loading_ring_color`, `loading_text_color`, `error_border_color`, `error_text_color`,
+  `missing_sign_color`, `toolbar_color`, `scrollbar_color`, `cursor_color`,
+  `background_effect_color` (quoted CSS color strings) — plus `background_effect`, which is
+  a name (`simple`, `particles`, `fog`) rather than a colour and is checked against those
+  three before it reaches the page. Everything but `show_console_window` is handed over,
+  most of it as CSS variables and the effect name as a string the script reads;
+  `show_console_window` only ever matters to Rust, at the moment a game is spawned (see
   *Launching a game*).
 
   **The palette is three colours, 60 / 30 / 10.** `primary_color` (the window),
@@ -407,8 +498,8 @@ The launcher has no console, so `logs/` is the only place a failure can be expla
 
   Which direction "lighter" runs is decided from the primary's own luminance, so a pale
   palette works with no further edits. `toolbar_color`, `scrollbar_color`,
-  `loading_ring_color` and `loading_text_color` default to blank meaning "take it from the
-  palette"; naming any of them still wins. The mixing happens in `app.js` rather than via
+  `loading_ring_color`, `loading_text_color`, `cursor_color` and `background_effect_color`
+  default to blank meaning "take it from the palette"; naming any of them still wins. The mixing happens in `app.js` rather than via
   CSS `color-mix()`, which needs Chromium 111+ and a deployed cartridge can be pinned to a
   fixed-version WebView2 runtime.
 
@@ -454,25 +545,31 @@ that check a signed, genuine launcher would happily start any executable on the 
 - `launcher/src/*.rs` — one file per job; the full map is under *Source layout* above.
   `main.rs` is the front door, `ui.rs` where the two halves meet, `constants.rs` where
   every tunable number lives.
-- `launcher/src/index.html`, `style.css`, `app.js` — the embedded UI (toolbar, scrolling
-  gallery, ordering, search, arranging, launch transition, launch states), split markup /
-  look / behaviour. `style.css` and `app.js` each carry a header naming the three spacing
-  numbers they duplicate from `constants.rs`.
+- `launcher/src/ui/index.html`, `style.css`, `app.js` — the embedded UI (toolbar, scrolling
+  gallery, ordering, search, arranging, the moving backdrop, the cursor ring, launch
+  transition, launch states), split markup / look / behaviour. `style.css` and `app.js` each
+  carry a header naming the three spacing numbers they duplicate from `constants.rs`.
 - `launcher/src/config.toml`, `launcher/src/catalog.json` — the baked-in seeds copied
   beside the exe on first run.
-- `launcher/Cargo.toml` — deps: `serde`, `serde_json`, `toml` (reading) and `toml_edit`
-  (writing the three order keys back without disturbing the file), `rust-embed`
-  (`include-exclude` feature), `tao`, `wry`, `windows-sys` (Windows only).
+- `launcher/Cargo.toml` — deps: the workspace's `common` (log timestamps, the AUMID, the
+  `x.y.z` command line) and `sigblock` (reading this exe's own signature back for
+  `--signature`; nothing here ever writes or verifies one), `serde`, `serde_json`, `toml`
+  (reading) and `toml_edit` (writing the three order keys back without disturbing the file),
+  `rust-embed` (`include-exclude` feature), `tao`, `wry`, `windows-sys` (Windows only),
+  `winres` as a build dependency, and `testkit` as a dev dependency for `tests/`.
 
 ## Status
 
 - [x] Webview shell, `app://` protocol, deterministic sizing, catalog + config
       (done-ish, ongoing polish).
-- [x] Launching: cwd at the exe, waiting for the game's window before closing, the
-      launch transition, the missing/failed cover states, and `logs/`. Remaining
+- [x] Launching: cwd at the exe, waiting for the game's window before getting out of its
+      way, the launch transition, the missing/failed cover states, and `logs/`. Remaining
       nice-to-haves are in [`TODO.md`](TODO.md).
 - [x] The gallery: one-size covers, horizontal scrolling, four order modes, drag-arrange,
-      search, and the three order keys written back to `config.toml`.
+      search, the moving backdrop and the cursor ring, and the three order keys written
+      back to `config.toml`.
+- [x] The tray: the launcher hides behind an icon while a game runs and comes back from it,
+      instead of exiting on every launch.
 - [x] Code-signing: the exe's signature is the cartridge's identity, and the `.cartridge`
       marker is retired. This was the launcher's only remaining identity work.
 - [x] Exercised end to end on real media — see

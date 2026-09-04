@@ -16,14 +16,12 @@
 //   sign.rs      putting a signature into a binary, and reading one back
 //   release.rs   the four stages, in order
 
-// Functions are camelCase in this project while variables stay snake_case,
-// which rustc's default lints object to. Silenced once, at the crate root.
-#![allow(non_snake_case)]
+#![allow(non_snake_case)] // camelCase functions
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use xtask::constants::USAGE;
+use xtask::constants::{SHIPPED_CRATES, USAGE};
 use xtask::{keys, manifest, release, report, sign};
 
 // ########## THE COMMAND LINE ##########
@@ -63,8 +61,9 @@ fn main() -> ExitCode {
 
 // ========== Commands ==========
 
-/// Signs every path in `paths` in place, taking the role name from each file's
-/// own stem. Fails if the list is empty or the signing key cannot be loaded.
+/// Signs every path in `paths` in place, taking the role from each file's own
+/// stem. Fails if the list is empty, the stem is not one xtask recognises, or
+/// the signing key cannot be loaded.
 fn signAll(root: &Path, paths: &[PathBuf]) -> Result<(), String> {
     if paths.is_empty() {
         return Err("nothing to sign — pass one or more paths".to_string());
@@ -73,18 +72,16 @@ fn signAll(root: &Path, paths: &[PathBuf]) -> Result<(), String> {
     // for its password per file.
     let key = keys::secretKey(root)?;
     for path in paths {
-        let name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("romzeta");
-        sign::sign(path, &key, &format!("romzeta-{name}"))?;
+        let role = sign::roleForPath(path)?;
+        sign::sign(path, &key, role)?;
         println!("signed {}", path.display());
     }
     Ok(())
 }
 
-/// Verifies every path in `paths` against the repo's public keys, printing one
-/// line each. Fails if any of them was refused.
+/// Verifies every path in `paths` against the repo's public keys and each
+/// file's own expected role, printing one line each. Fails if any of them was
+/// refused.
 fn verifyAll(root: &Path, paths: &[PathBuf]) -> Result<(), String> {
     if paths.is_empty() {
         return Err("nothing to verify — pass one or more paths".to_string());
@@ -94,7 +91,7 @@ fn verifyAll(root: &Path, paths: &[PathBuf]) -> Result<(), String> {
     // "which of these four is the bad one" is the actual question being asked.
     let mut failed = false;
     for path in paths {
-        match sign::verify(path, &anchors) {
+        match sign::roleForPath(path).and_then(|role| sign::verify(path, &anchors, role)) {
             Ok(verified) => println!(
                 "ok       {}  [{}]  {}",
                 path.display(),
@@ -114,16 +111,20 @@ fn verifyAll(root: &Path, paths: &[PathBuf]) -> Result<(), String> {
     }
 }
 
-/// Prints the project version and every crate's, marking with `!` any whose
-/// major has drifted. Fails if one has, via the same check a release runs.
+/// Prints the project version and every crate's, marking with `!` any shipped
+/// crate whose major has drifted. Fails if one has, via the same check a
+/// release runs.
 fn showVersions(root: &Path) -> Result<(), String> {
     let (project_version, crates) = manifest::read(root)?;
     println!("project version {project_version} — the x in every x.y.z below");
     for c in &crates {
-        let ok = if manifest::major(&c.version) == Some(project_version) {
+        let ok = if !SHIPPED_CRATES.contains(&c.name.as_str()) {
             " "
         } else {
-            "!"
+            match common::version::parse(&c.version) {
+                Some(v) if v.major == project_version => " ",
+                _ => "!",
+            }
         };
         // `{:<10}` left-pads the name so the versions form a column.
         println!("{ok} {:<10} {}", c.name, c.version);

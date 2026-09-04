@@ -30,34 +30,29 @@ pub struct Anchor {
 /// The public keys any listener built from this tree accepts, in the order it
 /// tries them. Missing files are skipped rather than being an error.
 ///
-/// Mirrors `listener/build.rs` by reading the same two files — a list of its
-/// own here would let `xtask verify` bless a cartridge the listener refuses.
+/// Reads `trust::keyfile::ANCHOR_FILES` — the same list `listener/build.rs`
+/// and `installer/build.rs` read — so a list of its own here could never let
+/// `xtask verify` bless a cartridge the listener refuses.
 pub fn anchors(root: &Path) -> Vec<Anchor> {
-    [("romzeta", "romzeta.pub"), ("dev", "dev.pub")]
-        .into_iter()
+    trust::keyfile::ANCHOR_FILES
+        .iter()
         // `filter_map` with `?` inside: either the file or the key line being
         // absent drops that anchor and leaves the other one standing.
-        .filter_map(|(name, file)| {
+        .filter_map(|&(name, file)| {
             let text = fs::read_to_string(root.join("keys").join(file)).ok()?;
             Some(Anchor {
                 name,
-                base64: base64Line(&text)?,
+                base64: trust::keyfile::keyLine(&text)?.to_string(),
             })
         })
         .collect()
 }
 
 /// Pulls the key out of a minisign `.pub` file, or `None` if there is no key
-/// line in it.
-///
-/// The format is a comment line then the key, but the comment is free text a
-/// human may have edited, so this takes the last line that is neither blank nor
-/// a comment rather than trusting the line count.
+/// line in it. A thin wrapper over `trust::keyfile::keyLine`, kept here because
+/// this crate's tests and call sites already reach for `keys::base64Line`.
 pub fn base64Line(text: &str) -> Option<String> {
-    text.lines()
-        .map(str::trim)
-        .rfind(|line| !line.is_empty() && !line.starts_with("untrusted comment:"))
-        .map(str::to_string)
+    trust::keyfile::keyLine(text).map(str::to_string)
 }
 
 // ========== Settings ==========

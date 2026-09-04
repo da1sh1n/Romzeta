@@ -1,7 +1,6 @@
 # Romzeta sigblock — human check
 
-3 files, 279 lines. Tick a file once you have read it and it is clear.
+2 files, 100 code lines. Tick a file once you have read it and it is clear.
 
-- [ ] [`src/lib.rs`](src/lib.rs) — 145
-- [ ] [`src/constants.rs`](src/constants.rs) — 22
-- [ ] [`src/tests.rs`](src/tests.rs) — 112
+- [ ] [`src/lib.rs`](src/lib.rs) — 96
+- [ ] [`src/constants.rs`](src/constants.rs) — 4

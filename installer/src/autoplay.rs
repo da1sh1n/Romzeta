@@ -12,7 +12,7 @@
 #[cfg(windows)]
 mod platform {
     use common::constants::{REG_READ, REG_WRITE};
-    use common::reg::{self, HKEY_CURRENT_USER as HKCU};
+    use common::reg::{self, Root::CurrentUser as HKCU};
 
     use crate::constants::{
         BACKUP_CHOSEN, BACKUP_DEFAULT, BACKUP_KEY, CHOSEN_KEY, DEFAULT_KEY, NONE_SENTINEL,

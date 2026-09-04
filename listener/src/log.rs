@@ -63,22 +63,20 @@ pub fn defaultLogPath(dir: &Path) -> PathBuf {
     dir.join(LOG_FILE)
 }
 
-/// Where the log goes when the folder beside the exe turns out to be read-only.
+/// Where the log goes when the folder beside the exe turns out to be
+/// read-only, or when the platform's data folder cannot be named at all.
 #[cfg(windows)]
 fn fallbackLogPath() -> PathBuf {
-    // `var_os`: a non-UTF-16 profile path is still a usable path.
-    let base = env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(env::temp_dir);
-    base.join("Romzeta").join(LOG_FILE)
+    match common::paths::romzetaDataDir() {
+        Some(dir) => dir.join(LOG_FILE),
+        None => env::temp_dir().join("Romzeta").join(LOG_FILE),
+    }
 }
 
 #[cfg(not(windows))]
 fn fallbackLogPath() -> PathBuf {
-    // The XDG spec's state directory, with its documented default under `HOME`.
-    let base = env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state")))
-        .unwrap_or_else(env::temp_dir);
-    base.join("romzeta").join(LOG_FILE)
+    match common::paths::romzetaDataDir() {
+        Some(dir) => dir.join(LOG_FILE),
+        None => env::temp_dir().join("romzeta").join(LOG_FILE),
+    }
 }

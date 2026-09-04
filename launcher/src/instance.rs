@@ -9,40 +9,14 @@
 
 // ########## SINGLE INSTANCE ##########
 
-/// Holds the process-wide single-instance mutex; releasing it (on drop or
-/// process exit) frees the name for the next launch.
 #[cfg(windows)]
-pub struct InstanceGuard(windows_sys::Win32::Foundation::HANDLE);
-
-#[cfg(windows)]
-impl Drop for InstanceGuard {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe { windows_sys::Win32::Foundation::CloseHandle(self.0) };
-        }
-    }
-}
+pub type InstanceGuard = common::win32::InstanceGuard;
 
 /// Returns `Some(guard)` if this is the first instance, `None` if another
 /// is already running.
 #[cfg(windows)]
 pub fn acquire() -> Option<InstanceGuard> {
-    use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
-    use windows_sys::Win32::System::Threading::CreateMutexW;
-
-    let name = common::utf16::wide(common::constants::LAUNCHER_INSTANCE_MUTEX);
-    unsafe {
-        let handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
-        if handle.is_null() {
-            // Couldn't create the mutex at all; don't block launching.
-            return Some(InstanceGuard(handle));
-        }
-        if GetLastError() == ERROR_ALREADY_EXISTS {
-            windows_sys::Win32::Foundation::CloseHandle(handle);
-            return None;
-        }
-        Some(InstanceGuard(handle))
-    }
+    common::win32::singleInstance(common::constants::LAUNCHER_INSTANCE_MUTEX)
 }
 
 #[cfg(not(windows))]

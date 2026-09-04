@@ -26,7 +26,7 @@ use windows_sys::Win32::System::Registry::{
     RegDeleteKeyW, RegDeleteValueW, RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
 
-pub use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
 /// An open key. RAII so that every early return closes it.
 pub struct Key(HKEY);
@@ -39,23 +39,39 @@ impl Drop for Key {
     }
 }
 
+/// The hive a call targets — the only raw `HKEY`s this crate's callers ever
+/// need, so the pointer itself never has to leave this module.
+pub enum Root {
+    CurrentUser,
+    LocalMachine,
+}
+
+impl Root {
+    fn toHkey(self) -> HKEY {
+        match self {
+            Root::CurrentUser => HKEY_CURRENT_USER,
+            Root::LocalMachine => HKEY_LOCAL_MACHINE,
+        }
+    }
+}
+
 /// Opens an existing key. `None` when it isn't there or isn't ours to open,
 /// which for every caller here means "nothing has been set" rather than an
 /// error worth reporting.
-pub fn open(root: HKEY, path: &str, access: u32) -> Option<Key> {
+pub fn open(root: Root, path: &str, access: u32) -> Option<Key> {
     let mut handle: HKEY = ptr::null_mut();
-    let ok = unsafe { RegOpenKeyExW(root, wide(path).as_ptr(), 0, access, &mut handle) };
+    let ok = unsafe { RegOpenKeyExW(root.toHkey(), wide(path).as_ptr(), 0, access, &mut handle) };
     (ok == ERROR_SUCCESS).then_some(Key(handle))
 }
 
 /// Opens a key, creating it and any missing parents. Needed because some of the
 /// AutoPlay keys only exist on a profile where the setting has been touched
 /// before, and because our own backup key never exists the first time.
-pub fn create(root: HKEY, path: &str) -> Result<Key, String> {
+pub fn create(root: Root, path: &str) -> Result<Key, String> {
     let mut handle: HKEY = ptr::null_mut();
     let ok = unsafe {
         RegCreateKeyExW(
-            root,
+            root.toHkey(),
             wide(path).as_ptr(),
             0,
             ptr::null(),
@@ -205,8 +221,8 @@ pub fn deleteValue(key: &Key, name: Option<&str>) {
 
 /// Removes a key that has no subkeys. Called on the AutoPlay backup key once
 /// its contents have been restored.
-pub fn deleteKey(root: HKEY, path: &str) {
+pub fn deleteKey(root: Root, path: &str) {
     unsafe {
-        RegDeleteKeyW(root, wide(path).as_ptr());
+        RegDeleteKeyW(root.toHkey(), wide(path).as_ptr());
     }
 }

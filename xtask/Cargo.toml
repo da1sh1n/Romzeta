@@ -13,6 +13,11 @@ publish = false
 # Where the signature goes. The one thing xtask shares with the programs.
 sigblock = { path = "../sigblock" }
 
+# The role a binary's file stem maps to, and the trusted-comment format both
+# sides read and write — the same lookup and the same shape the listener uses,
+# so `xtask sign`/`xtask verify` cannot disagree with it.
+trust = { path = "../trust" }
+
 # The UTC date that goes into a signature's trusted comment, shared with the
 # programs' log timestamps so there is one calendar implementation in the tree.
 common = { path = "../common" }

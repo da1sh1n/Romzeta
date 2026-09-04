@@ -20,7 +20,7 @@ use std::thread;
 use std::time::Instant;
 
 #[cfg(windows)]
-use common::reg::{self, HKEY_CURRENT_USER as HKCU, HKEY_LOCAL_MACHINE as HKLM};
+use common::reg::{self, Root::CurrentUser as HKCU, Root::LocalMachine as HKLM};
 
 #[cfg(windows)]
 use crate::constants::{ACTIVE_KEY, LOG_FILE, MACHINE_KEYS, STEAM_POLL, STEAM_WAIT, USER_KEY};

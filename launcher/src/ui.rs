@@ -33,7 +33,7 @@ use crate::constants::*;
 use crate::window;
 use crate::{assets, config, keeper, launch, order, tray};
 
-/// `pub` so `tray::windows` can send `TrayRestoreRequested` back into
+/// `pub` so `tray` can send `TrayRestoreRequested` back into
 /// this event loop.
 pub enum UserEvent {
     CloseRequested,
@@ -198,10 +198,10 @@ pub fn run(base_dir: &Path) -> wry::Result<()> {
             let game = game.clone();
             thread::spawn(move || {
                 let (ok, message, pid, playtime) =
-                    match launch::run(&base, &game, index, show_console_window) {
+                    match launch::run(&base, &game, show_console_window) {
                         launch::Outcome::Started(pid) => {
-                            let playtime =
-                                catalog::gameDir(&base, &game).map(|dir| dir.join("counter.txt"));
+                            let playtime = common::cartridge::gameDir(&base, &game.exe)
+                                .map(|dir| dir.join(common::cartridge::PLAYTIME_FILE));
                             (true, String::new(), Some(pid), playtime)
                         }
                         launch::Outcome::Failed(message) => (false, message, None, None),

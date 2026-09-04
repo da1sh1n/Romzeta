@@ -13,6 +13,8 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::process::Stdio;
 
+use common::cartridge as contract;
+
 use crate::catalog::Game;
 
 /// Fresh stdout/stderr files for `game`, so a game that prints why it died
@@ -20,10 +22,11 @@ use crate::catalog::Game;
 /// current run.
 ///
 /// Falls back to discarding the output when the files cannot be opened — no
-/// game goes unlaunched over a log. `index` is the catalog position, used only
-/// to name a folder for a game whose title reduces to nothing.
-pub fn gameOutput(base: &Path, game: &Game, index: usize) -> (Stdio, Stdio) {
-    let dir = base.join("logs").join(slug(&game.name, index));
+/// game goes unlaunched over a log.
+pub fn gameOutput(base: &Path, game: &Game) -> (Stdio, Stdio) {
+    let dir = base
+        .join(contract::LOGS_DIR)
+        .join(contract::slug(&game.name));
     if fs::create_dir_all(&dir).is_err() {
         return (Stdio::null(), Stdio::null());
     }
@@ -35,26 +38,4 @@ pub fn gameOutput(base: &Path, game: &Game, index: usize) -> (Stdio, Stdio) {
             .unwrap_or_else(|_| Stdio::null())
     };
     (open("out.log"), open("err.log"))
-}
-
-/// A game's name reduced to a folder name: lowercase, `[a-z0-9]` kept, every
-/// run of anything else collapsed to a single `-`. Falls back to `game-<index>`
-/// for a name that survives none of that.
-fn slug(name: &str, index: usize) -> String {
-    let mut out = String::with_capacity(name.len());
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-        // The `ends_with` test is what collapses a run of punctuation into one
-        // dash instead of one dash per character.
-        } else if !out.ends_with('-') {
-            out.push('-');
-        }
-    }
-    let trimmed = out.trim_matches('-');
-    if trimmed.is_empty() {
-        format!("game-{index}")
-    } else {
-        trimmed.to_string()
-    }
 }

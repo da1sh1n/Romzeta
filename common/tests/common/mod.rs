@@ -19,7 +19,7 @@ pub use testkit::{Checks, Scratch, Verdict, appLogPath, checks, verdict};
 /// Holding the name rather than a width says which test decided it. A longer
 /// one stops the run and asks for this to be widened, rather than quietly
 /// pushing that row's columns out of line.
-const LONGEST_TEST_NAME: &str = "the_printed_shapes_are_fixed_width";
+const LONGEST_TEST_NAME: &str = "every_row_the_installer_writes_survives_the_launchers_filter";
 
 /// `CARGO_MANIFEST_DIR` has to be read here rather than inside `testkit`, where
 /// it would name testkit's own folder instead of this crate's.

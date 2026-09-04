@@ -11,6 +11,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use common::cartridge as contract;
+
 /// Launches `keeper.exe` — the sibling of whichever `launcher.exe` is
 /// currently running, on a real cartridge or under `cargo run` alike — detached
 /// and pointed at `pid`. Returns as soon as the process starts; the keeper then
@@ -19,22 +21,16 @@ use std::process::Command;
 /// cartridge from going idle.
 pub fn spawn(base_dir: &Path, pid: u32, playtime_path: Option<&Path>) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let keeper_name = if cfg!(windows) {
-        "keeper.exe"
-    } else {
-        "keeper"
+    let keeper_exe: PathBuf = exe.with_file_name(contract::KEEPER_NAME);
+
+    let args = contract::KeeperArgs {
+        pid,
+        base_dir: base_dir.to_path_buf(),
+        playtime_path: playtime_path.map(Path::to_path_buf),
     };
-    let keeper_exe: PathBuf = exe.with_file_name(keeper_name);
 
     let mut command = Command::new(keeper_exe);
-    command
-        .arg("--pid")
-        .arg(pid.to_string())
-        .arg("--base")
-        .arg(base_dir);
-    if let Some(path) = playtime_path {
-        command.arg("--playtime").arg(path);
-    }
+    command.args(args.toArgv());
 
     #[cfg(windows)]
     {

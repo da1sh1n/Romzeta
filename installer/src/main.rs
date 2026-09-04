@@ -10,9 +10,7 @@
 //
 // No console window: this is a GUI app.
 #![windows_subsystem = "windows"]
-// Functions are camelCase in this project while variables stay snake_case,
-// which rustc's default lints object to. Silenced once, at the crate root.
-#![allow(non_snake_case)]
+#![allow(non_snake_case)] // camelCase functions
 
 // ########## ENTRY POINT ##########
 

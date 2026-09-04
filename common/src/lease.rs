@@ -10,21 +10,20 @@
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::constants::LEASE_FILE;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Lease {
     pub pid: u32,
-    pub cartridge_root: PathBuf,
 }
 
 pub fn leasePath() -> PathBuf {
     baseDir().join(LEASE_FILE)
 }
 
-pub fn writeLease(pid: u32, cartridge_root: &Path) -> io::Result<()> {
+pub fn writeLease(pid: u32) -> io::Result<()> {
     let path = leasePath();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -33,34 +32,20 @@ pub fn writeLease(pid: u32, cartridge_root: &Path) -> io::Result<()> {
     payload.push_str("pid=");
     payload.push_str(&pid.to_string());
     payload.push('\n');
-    payload.push_str("cartridge_root=");
-    payload.push_str(&cartridge_root.to_string_lossy());
-    payload.push('\n');
     fs::write(path, payload)
 }
 
 pub fn readLease() -> Option<Lease> {
     let text = fs::read_to_string(leasePath()).ok()?;
     let mut pid = None;
-    let mut cartridge_root = None;
 
     for line in text.lines() {
         if let Some(value) = line.strip_prefix("pid=") {
             pid = value.trim().parse::<u32>().ok();
-            continue;
-        }
-        if let Some(value) = line.strip_prefix("cartridge_root=") {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                cartridge_root = Some(PathBuf::from(trimmed));
-            }
         }
     }
 
-    Some(Lease {
-        pid: pid?,
-        cartridge_root: cartridge_root?,
-    })
+    Some(Lease { pid: pid? })
 }
 
 pub fn clearLease() -> io::Result<()> {
@@ -96,25 +81,5 @@ pub fn processExists(pid: u32) -> bool {
 }
 
 fn baseDir() -> PathBuf {
-    #[cfg(windows)]
-    {
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            return PathBuf::from(local).join("Romzeta");
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        if let Some(state_home) = std::env::var_os("XDG_STATE_HOME") {
-            return PathBuf::from(state_home).join("romzeta");
-        }
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home)
-                .join(".local")
-                .join("state")
-                .join("romzeta");
-        }
-    }
-
-    std::env::temp_dir().join("Romzeta")
+    crate::paths::romzetaDataDir().unwrap_or_else(|| std::env::temp_dir().join("Romzeta"))
 }

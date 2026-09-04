@@ -112,8 +112,8 @@ fn faceFile(face: &str) -> Option<PathBuf> {
     const FONTS: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts";
 
     for (root, dir) in [
-        (common::reg::HKEY_LOCAL_MACHINE, machineFontDir()),
-        (common::reg::HKEY_CURRENT_USER, userFontDir()),
+        (common::reg::Root::LocalMachine, machineFontDir()),
+        (common::reg::Root::CurrentUser, userFontDir()),
     ] {
         let (Some(key), Some(dir)) = (
             common::reg::open(root, FONTS, common::constants::REG_READ),

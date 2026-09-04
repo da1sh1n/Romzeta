@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::autoplay;
-use crate::constants::{AUTOSTART_NAME, EXE_NAME, FOLDER, STALE_CONFIG_FILE};
+use crate::constants::{AUTOSTART_NAME, EXE_NAME, STALE_CONFIG_FILE};
 use crate::payload;
 
 /// `%LOCALAPPDATA%\Romzeta` — the listener's home, and the only place this
@@ -24,7 +24,7 @@ use crate::payload;
 /// `None` only when the environment doesn't say where `%LOCALAPPDATA%` is,
 /// which in practice means a stripped-down service account.
 pub fn installDir() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(FOLDER))
+    common::paths::romzetaDataDir()
 }
 
 /// Folders earlier builds of this installer used, newest first.
@@ -37,10 +37,10 @@ pub fn installDir() -> Option<PathBuf> {
 fn legacyDirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        dirs.push(PathBuf::from(local).join("Programs").join(FOLDER));
+        dirs.push(PathBuf::from(local).join("Programs").join("Romzeta"));
     }
     if let Some(program_files) = std::env::var_os("ProgramFiles") {
-        dirs.push(PathBuf::from(program_files).join(FOLDER));
+        dirs.push(PathBuf::from(program_files).join("Romzeta"));
     }
     dirs
 }
@@ -253,7 +253,7 @@ mod platform {
     use common::utf16::fromWide;
 
     use common::constants::{REG_READ, REG_WRITE};
-    use common::reg::{self, HKEY_CURRENT_USER as HKCU};
+    use common::reg::{self, Root::CurrentUser as HKCU};
 
     use crate::constants::RUN_KEY;
 

@@ -16,9 +16,7 @@
 //!
 //! Finding a block says only where the signature is; verifying it is `trust`.
 
-// Functions are camelCase in this project while variables stay snake_case,
-// which rustc's default lints object to. Silenced once, at the crate root.
-#![allow(non_snake_case)]
+#![allow(non_snake_case)] // camelCase functions
 
 pub mod constants;
 

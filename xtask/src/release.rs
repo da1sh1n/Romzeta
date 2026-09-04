@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::constants::SHIPPED_CRATES;
 use crate::{keys, manifest, sign};
 
 /// Runs all four stages against the workspace at `root`, then verifies what it
@@ -61,17 +62,17 @@ pub fn run(root: &Path) -> Result<(), String> {
     sign::sign(
         &launcher,
         &key,
-        &format!("romzeta-launcher {}", version("launcher")),
+        &trust::comment::build(trust::constants::LAUNCHER_ROLE, &version("launcher")),
     )?;
     sign::sign(
         &listener,
         &key,
-        &format!("romzeta-listener {}", version("listener")),
+        &trust::comment::build(trust::constants::LISTENER_ROLE, &version("listener")),
     )?;
     sign::sign(
         &keeper,
         &key,
-        &format!("romzeta-keeper {}", version("keeper")),
+        &trust::comment::build(trust::constants::KEEPER_ROLE, &version("keeper")),
     )?;
 
     // Deliberately after signing, and deliberately a separate cargo invocation:
@@ -86,18 +87,20 @@ pub fn run(root: &Path) -> Result<(), String> {
     sign::sign(
         &installer,
         &key,
-        &format!("romzeta-installer {}", version("installer")),
+        &trust::comment::build(trust::constants::INSTALLER_ROLE, &version("installer")),
     )?;
 
     println!();
     println!("project version {project_version} — these four are compatible with each other:");
     let anchors = keys::anchors(root);
-    for path in [&launcher, &listener, &keeper, &installer] {
+    for &name in SHIPPED_CRATES {
+        let path = release.join(exe(name));
         // Verifying what we just signed is not ceremony. It is the only thing
         // that proves the secret key in use actually corresponds to a public key
         // baked into the listener we just built — if it does not, every cartridge
         // from this release would be refused, and this is where we find out.
-        let verified = sign::verify(path, &anchors)?;
+        let role = sign::roleForPath(&path)?;
+        let verified = sign::verify(&path, &anchors, role)?;
         println!(
             "  {}  [{}]  {}",
             path.display(),

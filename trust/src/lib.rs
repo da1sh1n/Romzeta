@@ -8,11 +8,10 @@
 //! signed comment declares, returning what the signature says or why it was
 //! refused. Covers that file only; anything beside it on disk is unsigned.
 
-// Functions are camelCase in this project while variables stay snake_case,
-// which rustc's default lints object to. Silenced once, at the crate root.
-#![allow(non_snake_case)]
+#![allow(non_snake_case)] // camelCase functions
 
 pub mod constants;
+pub mod keyfile;
 
 // ########## THE TRUST DECISION ##########
 
@@ -46,7 +45,7 @@ impl Anchor<'_> {
 /// about a file off a stranger's disk it is safe to believe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attested {
-    /// Which anchor accepted it — `release` or `dev`, for the log line.
+    /// Which anchor accepted it — `romzeta` or `dev`, for the log line.
     pub anchor: String,
     /// The role from the trusted comment, always equal to the `expected_role`
     /// that was asked for. Carried anyway so a caller logging the result does
@@ -128,7 +127,7 @@ pub fn attest(
         // trusted comment is just bytes off a disk someone else wrote. minisign
         // covers it with a second signature over `signature ‖ comment`, which
         // the same `verify` call above already checked.
-        let (role, version) = splitComment(signature.trusted_comment());
+        let (role, version) = comment::split(signature.trusted_comment());
         if role != expected_role {
             return Err(Refusal::WrongRole {
                 expected: expected_role.to_string(),
@@ -145,15 +144,26 @@ pub fn attest(
     Err(Refusal::Untrusted)
 }
 
-/// Splits a trusted comment into `(role, version)`. `xtask` writes
-/// `<role> <version> <date>`; the date is provenance for a human and nothing
-/// reads it.
-///
-/// Missing fields come back empty rather than as an error — an empty role
-/// matches no `expected_role`, which is already the right outcome for a comment
-/// we cannot make sense of.
-fn splitComment(comment: &str) -> (&str, &str) {
-    let mut parts = comment.split_whitespace();
-    // `unwrap_or("")` rather than `?`: see the doc comment above.
-    (parts.next().unwrap_or(""), parts.next().unwrap_or(""))
+// ========== The Trusted Comment ==========
+
+/// Building and reading the trusted comment `xtask sign` writes: `<role>
+/// <version>`, optionally followed by more fields (`xtask` appends today's
+/// date) that neither side here reads.
+pub mod comment {
+    /// Splits a trusted comment into `(role, version)`, ignoring anything
+    /// after the second field.
+    ///
+    /// Missing fields come back empty rather than as an error — an empty role
+    /// matches no `expected_role`, which is already the right outcome for a
+    /// comment we cannot make sense of.
+    pub fn split(comment: &str) -> (&str, &str) {
+        let mut parts = comment.split_whitespace();
+        // `unwrap_or("")` rather than `?`: see the doc comment above.
+        (parts.next().unwrap_or(""), parts.next().unwrap_or(""))
+    }
+
+    /// Builds the two-field comment `split` reads back: `<role> <version>`.
+    pub fn build(role: &str, version: &str) -> String {
+        format!("{role} {version}")
+    }
 }

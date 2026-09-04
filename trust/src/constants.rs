@@ -18,3 +18,19 @@ pub const LAUNCHER_ROLE: &str = "romzeta-launcher";
 pub const LISTENER_ROLE: &str = "romzeta-listener";
 pub const INSTALLER_ROLE: &str = "romzeta-installer";
 pub const KEEPER_ROLE: &str = "romzeta-keeper";
+
+// ========== Stem -> Role (xtask/src/sign.rs) ==========
+
+/// The role for a binary's file stem — `"launcher"`, `"listener"`,
+/// `"installer"` or `"keeper"` — or `None` for anything xtask does not sign or
+/// verify. `xtask sign` and `xtask verify` both derive the role this way, so
+/// the two commands cannot disagree about what a file is.
+pub fn roleForStem(stem: &str) -> Option<&'static str> {
+    match stem {
+        "launcher" => Some(LAUNCHER_ROLE),
+        "listener" => Some(LISTENER_ROLE),
+        "installer" => Some(INSTALLER_ROLE),
+        "keeper" => Some(KEEPER_ROLE),
+        _ => None,
+    }
+}

@@ -449,22 +449,14 @@ pub const ACTIVE_KEY: &str = r"Software\Valve\Steam\ActiveProcess";
 #[cfg(windows)]
 pub const MACHINE_KEYS: [&str; 2] = [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"];
 
-// ========== The Tray Icon (tray/windows.rs) ==========
+// ========== The Tray Icon (tray.rs) ==========
 
 #[cfg(windows)]
 pub const WINDOW_CLASS: &str = "Romzeta.LauncherTray";
 
-/// `uID` `Shell_NotifyIconW` identifies this icon by. One tray icon per
-/// process, so any constant does.
 #[cfg(windows)]
-pub const TRAY_ICON_UID: u32 = 1;
-
-/// Custom message `Shell_NotifyIconW` delivers mouse activity through.
-/// `WM_APP` is the documented start of an application's own range.
+pub const MENU_ITEMS: [&str; 2] = ["Open Romzeta", "Exit"];
 #[cfg(windows)]
-pub const WM_TRAYICON: u32 = windows_sys::Win32::UI::WindowsAndMessaging::WM_APP + 1;
-
+pub const MENU_OPEN: usize = 0;
 #[cfg(windows)]
-pub const ID_MENU_OPEN: u32 = 1;
-#[cfg(windows)]
-pub const ID_MENU_EXIT: u32 = 2;
+pub const MENU_EXIT: usize = 1;

@@ -13,8 +13,10 @@
 mod games;
 mod listener;
 
+use common::cartridge as contract;
+
 use crate::app::{App, Mode, Screen};
-use crate::catalog::{self, Entry};
+use crate::catalog::Entry;
 use crate::constants::{BAD, GOOD, WARN};
 use crate::payload;
 use crate::volume::humanBytes;
@@ -363,7 +365,7 @@ fn review(app: &mut App, ui: &mut egui::Ui) {
         .keep
         .iter()
         .filter(|entry| {
-            !catalog::slugOf(entry).is_some_and(|slug| changed.contains(&slug.as_str()))
+            !contract::slugOf(&entry.exe).is_some_and(|slug| changed.contains(&slug.as_str()))
         })
         .collect();
     if !untouched.is_empty() {

@@ -19,18 +19,10 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 // ========== Writing A Cartridge (cartridge.rs) ==========
 
-pub const CONFIG_FILE: &str = "config.toml";
-
-/// The launcher's filename on a Windows cartridge, and the file the listener
-/// looks for. Both sides hardcode it — see `../../listener/src/trust.rs`, which
-/// explains why letting the cartridge name its own binary was a liability
-/// rather than a feature.
-pub const LAUNCHER_NAME: &str = "launcher.exe";
-
-/// The launcher's detached keepalive worker, written beside it on the same
-/// cartridge — `keeper::spawn` finds it by looking next to whichever
-/// `launcher.exe` is currently running.
-pub const KEEPER_NAME: &str = "keeper.exe";
+/// Re-exported so `crate::constants::LAUNCHER_NAME` / `KEEPER_NAME` keep
+/// resolving for callers outside this block's remit (`volume.rs` and its
+/// tests) — the definitions themselves now live in `common::cartridge`.
+pub use common::cartridge::{KEEPER_NAME, LAUNCHER_NAME};
 
 /// Headroom demanded on top of the measured bytes before a copy is offered.
 ///
@@ -39,19 +31,6 @@ pub const KEEPER_NAME: &str = "keeper.exe";
 /// volume's cluster size rounds each file up to. Filling a cartridge to the last
 /// byte also leaves the launcher no room for its log and WebView2 cache.
 pub const FREE_SPACE_SLACK: u64 = 256 * 1024 * 1024;
-
-// ========== Catalog.json (catalog.rs) ==========
-
-pub const CATALOG_FILE: &str = "catalog.json";
-pub const GAMES_DIR: &str = "games";
-
-/// Cover art, under the cartridge's `assets/` folder alongside WebView2's own
-/// cache — so the root holds only what a person put there.
-///
-/// This was a bare `images/` and a cartridge written by an older installer
-/// still says so in its catalog. Nothing needs migrating: the launcher serves
-/// whatever path the catalog names, and accepts both prefixes.
-pub const IMAGES_DIR: &str = "assets/images";
 
 // ========== The Cancellable Copy (copy.rs) ==========
 
@@ -124,9 +103,6 @@ pub const EXE_NAME: &str = if cfg!(windows) {
 /// here only so an upgrade can clear it away rather than leave a file behind
 /// that looks like it still configures something.
 pub const STALE_CONFIG_FILE: &str = "config.toml";
-
-/// The folder name, under `%LOCALAPPDATA%`.
-pub const FOLDER: &str = "Romzeta";
 
 /// Name of the `Run` value. Also what the user sees in Task Manager's Startup
 /// tab, so it is a product name and not an exe name.

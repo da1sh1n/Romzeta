@@ -4,9 +4,7 @@
 // v3.0 or later. Romzeta comes with ABSOLUTELY NO WARRANTY. See the LICENSE file
 // or <https://www.gnu.org/licenses/> for details.
 
-// Functions are camelCase in this project while variables stay snake_case,
-// which rustc's default lints object to. Silenced once, at the script's root.
-#![allow(non_snake_case)]
+#![allow(non_snake_case)] // camelCase functions
 
 //! Build script. Embeds FileDescription/ProductName so Task Manager shows
 //! "Romzeta Launcher" instead of the bare filename.

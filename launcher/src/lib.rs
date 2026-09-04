@@ -23,7 +23,8 @@ pub mod launch;
 pub mod log;
 pub mod order;
 pub mod steam;
-pub mod tray;
 pub mod ui;
-pub mod version;
 pub mod window;
+
+#[cfg(windows)]
+pub mod tray;

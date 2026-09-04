@@ -12,8 +12,8 @@
 
 mod common;
 
+use ::common::cartridge::isContained;
 use common::{checks, runTest};
-use launcher::catalog::isContained;
 
 #[test]
 fn ordinary_relative_paths_stay_inside() {
